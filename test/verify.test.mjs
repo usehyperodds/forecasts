@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { digest } from "../scripts/lib/eip712.mjs";
+import { digest, recover } from "../scripts/lib/eip712.mjs";
 import { formatLine, merkleRoot, sha256 } from "../scripts/lib/record.mjs";
 import { loadRecords, RecordError, verifyRecords } from "../scripts/lib/verify.mjs";
 import { key, sign } from "./keys.mjs";
@@ -25,10 +25,10 @@ function failure(store) {
   assert.fail("verify passed");
 }
 
-/** The valid store with 2026-10-22's lines changed and, unless `stale`, its manifest and index to match. */
-async function edited(change, { stale = false } = {}) {
+/** The valid store with one day's lines changed and, unless `stale`, its manifest and index to match. */
+async function edited(change, { stale = false, day = "2026-10-22" } = {}) {
   const store = await load("valid");
-  const files = store.days.get("2026-10-22");
+  const files = store.days.get(day);
   const text = change(files.jsonl.toString("utf8"));
   files.jsonl = Buffer.from(text);
   if (stale) return store;
@@ -42,7 +42,7 @@ async function edited(change, { stale = false } = {}) {
   };
   files.manifest = Buffer.from(JSON.stringify(manifest));
   const index = JSON.parse(store.index);
-  index.days = index.days.map((d) => (d.day === "2026-10-22" ? { ...manifest, url: d.url } : d));
+  index.days = index.days.map((d) => (d.day === day ? { ...manifest, url: d.url } : d));
   store.index = Buffer.from(JSON.stringify(index));
   return store;
 }
@@ -142,7 +142,51 @@ test("a fair note beside a fair line fails", async () => {
 
 test("a signature in uppercase hex fails the format", async () => {
   const e = failure(await edited(editField(3, (l) => ({ ...l, signature: `0x${l.signature.slice(2).toUpperCase()}` }))));
-  assert.equal(e.message, "2026-10-22, line 4: signature is not 65 bytes of lowercase hex");
+  assert.equal(e.message, "2026-10-22, line 4: signature is not 65 bytes of lowercase hex ending in v 1b or 1c");
+});
+
+test("a high-s signature fails, though it recovers to the same forecaster", async () => {
+  const N = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n;
+  const line = JSON.parse((await load("valid")).days.get("2026-10-22").jsonl.toString().split("\n")[3]);
+  const s = BigInt(`0x${line.signature.slice(66, 130)}`);
+  const flipped = `${line.signature.slice(0, 66)}${(N - s).toString(16).padStart(64, "0")}${line.signature.endsWith("1b") ? "1c" : "1b"}`;
+  const message = { forecaster: line.forecaster, outcome: line.outcome, probabilityBps: line.probabilityBps, time: line.time, nonce: line.nonce };
+  assert.equal(recover(digest("Forecast", message), flipped), line.forecaster);
+  const e = failure(await edited(editField(3, (l) => ({ ...l, signature: flipped }))));
+  assert.equal(e.message, "2026-10-22, line 4: signature has a high s; the record holds low-s signatures only");
+});
+
+test("a signature with v written 00 or 01 fails the format", async () => {
+  for (const v of ["00", "01"]) {
+    const e = failure(await edited(editField(3, (l) => ({ ...l, signature: `${l.signature.slice(0, 130)}${v}` }))));
+    assert.equal(e.message, "2026-10-22, line 4: signature is not 65 bytes of lowercase hex ending in v 1b or 1c");
+  }
+});
+
+test("an id repeated across days fails", async () => {
+  const e = failure(await edited(editField(0, (l) => ({ ...l, id: 3 })), { day: "2026-10-23" }));
+  assert.equal(e.message, "2026-10-23, line 1: id 3 is also in 2026-10-22; ids are unique across days");
+});
+
+test("a later id signed before the forecaster's earlier forecast on the outcome fails", async () => {
+  const e = failure(await load("out-of-order"));
+  assert.equal(
+    e.message,
+    "2026-10-22, line 5: id 6 on outcome 42400 is signed at time 1792576799, not after time 1792576800 of the forecaster's earlier id 1 (2026-10-22, line 1); the server refuses a forecast out of order",
+  );
+});
+
+test("an equal signed time on the same outcome fails too", async () => {
+  const first = JSON.parse((await load("valid")).days.get("2026-10-22").jsonl.toString().split("\n")[0]);
+  const e = failure(
+    await edited(
+      editField(4, (l) => {
+        const message = { forecaster: l.forecaster, outcome: l.outcome, probabilityBps: l.probabilityBps, time: first.time, nonce: l.nonce };
+        return { ...l, time: first.time, acceptedAt: new Date((first.time + 300) * 1000).toISOString(), signature: sign(digest("Forecast", message), key(1)) };
+      }),
+    ),
+  );
+  assert.match(e.message, /^2026-10-22, line 5: id 6 on outcome 42400 is signed at time (\d+), not after time \1 of the forecaster's earlier id 1/);
 });
 
 test("a nonce with a leading zero fails the format", async () => {

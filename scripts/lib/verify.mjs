@@ -185,6 +185,42 @@ function messageOf(group) {
   };
 }
 
+/** Ids are unique across days. */
+function checkIds(day, lines, seen) {
+  for (const l of lines) {
+    const elsewhere = seen.ids.get(l.v.id);
+    if (elsewhere) throw new RecordError(day, `id ${l.v.id} is also in ${elsewhere}; ids are unique across days`, l.n);
+    seen.ids.set(l.v.id, day);
+  }
+}
+
+/**
+ * Each forecaster's signed times on an outcome rise in the order the server accepted the forecasts
+ * (by id): it refuses a forecast not signed later than that forecaster's latest one there.
+ */
+function checkOrder(days) {
+  const byKey = new Map();
+  for (const d of days)
+    d.lines.forEach((v, i) => {
+      const key = `${v.forecaster}:${v.outcome}`;
+      const list = byKey.get(key) ?? [];
+      list.push({ day: d.day, n: i + 1, v });
+      byKey.set(key, list);
+    });
+  for (const list of byKey.values()) {
+    list.sort((a, b) => a.v.id - b.v.id);
+    for (let i = 1; i < list.length; i++) {
+      const [prev, cur] = [list[i - 1], list[i]];
+      if (cur.v.time <= prev.v.time)
+        throw new RecordError(
+          cur.day,
+          `id ${cur.v.id} on outcome ${cur.v.outcome} is signed at time ${cur.v.time}, not after time ${prev.v.time} of the forecaster's earlier id ${prev.v.id} (${prev.day}, line ${prev.n}); the server refuses a forecast out of order`,
+          cur.n,
+        );
+    }
+  }
+}
+
 function checkBatches(day, lines, seen) {
   const groups = new Map();
   for (const l of lines) {
@@ -252,6 +288,7 @@ function verifyDay(day, files, entry, seen) {
   raw.pop();
   const lines = [];
   raw.forEach((s, i) => lines.push(checkLine(day, s, i + 1, lines.at(-1))));
+  checkIds(day, lines, seen);
   const batches = checkBatches(day, lines, seen);
   if (lines.length !== manifest.count)
     throw new RecordError(day, `has ${lines.length} lines; the manifest says ${manifest.count}`);
@@ -272,10 +309,12 @@ function verifyDay(day, files, entry, seen) {
 export function verifyRecords(store, { only, now = Date.now() } = {}) {
   const entries = checkIndex(store.index, store.days, now);
   const days = only ? [...new Set(only)].sort() : [...entries.keys()].sort();
-  const seen = { batches: new Map(), nonces: new Map() };
-  return days.map((day) => {
+  const seen = { ids: new Map(), batches: new Map(), nonces: new Map() };
+  const verified = days.map((day) => {
     const entry = entries.get(day);
     if (!entry) throw new RecordError(day, "is not in the record");
     return verifyDay(day, store.days.get(day), entry, seen);
   });
+  checkOrder(verified);
+  return verified;
 }

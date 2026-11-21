@@ -26,6 +26,8 @@ export const MANIFEST_KEYS = ["day", "count", "root", "sha256", "bytes", "closed
 export const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const UINT64_MAX = (1n << 64n) - 1n;
+/** Half the secp256k1 group order: a signature's `s` may not exceed it. */
+const HALF_N = 0x7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0n;
 
 export function sha256(...parts) {
   const h = createHash("sha256");
@@ -107,8 +109,9 @@ export function lineProblem(l) {
   if (!isInt(l.time, 0, Number.MAX_SAFE_INTEGER)) return `time ${JSON.stringify(l.time)} is not Unix seconds`;
   if (!isUint64String(l.nonce))
     return `nonce ${JSON.stringify(l.nonce)} is not a uint64 as a decimal string without leading zeros`;
-  if (typeof l.signature !== "string" || !/^0x[0-9a-f]{130}$/.test(l.signature))
-    return "signature is not 65 bytes of lowercase hex";
+  if (typeof l.signature !== "string" || !/^0x[0-9a-f]{128}1[bc]$/.test(l.signature))
+    return "signature is not 65 bytes of lowercase hex ending in v 1b or 1c";
+  if (BigInt(`0x${l.signature.slice(66, 130)}`) > HALF_N) return "signature has a high s; the record holds low-s signatures only";
   return null;
 }
 

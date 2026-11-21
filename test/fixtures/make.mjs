@@ -153,6 +153,15 @@ await variant("bad-signature", (t) =>
     return { ...l, signature: sign(digest("Forecast", message), key(9)) };
   }),
 );
+// Key 1's second forecast on 42400 (line 5) signed one second before its first (line 1): accepted
+// later, so its id is higher, but signed earlier. The server refuses that as out_of_order.
+await variant("out-of-order", (t) =>
+  edit(t, 4, (l) => {
+    const time = JSON.parse(t[0]).time - 1;
+    const message = { forecaster: l.forecaster, outcome: l.outcome, probabilityBps: l.probabilityBps, time, nonce: l.nonce };
+    return { ...l, time, acceptedAt: iso((time + 300) * 1000), signature: sign(digest("Forecast", message), key(1)) };
+  }),
+);
 await variant("reordered-key", (t) =>
   t.map((s, i) => {
     if (i !== 3) return s;
