@@ -1,9 +1,7 @@
 # The Hyperodds forecast record spec
 
 Everything below is fixed. The Hyperodds API, its MCP bridge (`hyperodds-mcp`), the open scorer and the console
-are built to it; a change here is a new version of the spec. This text is published as `SPEC.md` in
-[usehyperodds/forecasts](https://github.com/usehyperodds/forecasts), generated from the specification Hyperodds
-builds to, so the two never differ.
+are built to it; a change here is a new version of the spec.
 
 ## Units and names
 
@@ -81,8 +79,10 @@ letter case (an all-capitals address signs as its lowercase form).
   (`"1763719200000"`); a JSON integer up to 2^53 − 1 is accepted too.
 - `time` must be within 600 seconds before and 120 seconds after the server's clock at the moment it records the
   forecast (`acceptedAt`), or it is refused as `stale_time`. Every recorded line therefore has
-  `floor(acceptedAt / 1000) − 600 ≤ time ≤ floor(acceptedAt / 1000) + 120`. It also orders a forecaster's forecasts on one outcome (What counts). A sign link builds its message when the wallet signs, so its `time` is fresh.
-- A submission refused for any reason spends nothing: fix it and send it again with the same nonce.
+  `floor(acceptedAt / 1000) − 600 ≤ time ≤ floor(acceptedAt / 1000) + 120`. `time` also decides which of a
+  forecaster's forecasts on one outcome counts, as set out under What counts. A sign link builds its message when
+  the wallet signs, so its `time` is fresh.
+- A refused submission doesn't use up its nonce: fix it and send it again with the same one.
 - Batches are all or nothing. If any entry is refused, nothing is recorded and the answer lists every refused entry.
 - A batch's outcomes must be distinct.
 
@@ -111,13 +111,14 @@ letter case (an all-capitals address signs as its lowercase form).
   closed, the one with the latest signed `time`; equal times go to the higher `id`. Earlier ones stay in the record.
   Nothing is deleted.
 - **In order**: a forecast whose signed `time` is not later than the `time` of that forecaster's latest accepted
-  forecast on the same outcome (pending or published) is refused, entry code `out_of_order`. The signer's clock, not
-  the order in which signed forecasts reach the server, decides which one counts.
+  forecast on the same outcome (pending or published) is refused, entry code `out_of_order`. So the signer's clock
+  decides which forecast counts, whatever order the forecasts reach the server in.
 - **Replaced**, in the API: a published forecast (one past its cutoff) is replaced when the same forecaster has a
   published forecast on the same outcome with a later `time` (equal times: a higher `id`). Pending forecasts never
   change what others see.
 - A forecast is **private** until its recorded cutoff: no endpoint, page or tool shows it, or its probability, to
-  anyone, before then. The API answers its forecaster's count of pending forecasts, never their outcomes.
+  anyone, before then. Until then the API shows only counts: how many pending forecasts a forecaster has, and on
+  how many markets.
 - After its cutoff it shows in the forecaster's record. It is written into the daily record of the UTC day its
   cutoff falls on, which closes at 00:05 UTC the next day and never changes after.
 - It is **resolved** once Hyperliquid settles its outcome. The board counts only resolved forecasts that are in a
@@ -130,8 +131,8 @@ At acceptance the server records, from its own live state at that moment:
 | Field | Meaning |
 |---|---|
 | `fairBps` | Hyperodds' fair line for side 0, in basis points (0 to 10000, rounded), or null |
-| `fairNote` | Why `fairBps` is null: `no-line` (Hyperodds has no line for the market) or `low-confidence` (the line's confidence is under 0.5, the bar edge rankings use). Null when `fairBps` is set |
-| `midBps` | The book's mid for side 0 (halfway between best bid and best ask), in basis points (0 to 10000, rounded), or null when either side of the book is empty or the spread is wider than 10 points (the bar edge rankings use): a mid between a 1¢ bid and a 99¢ ask is no price anyone trades at |
+| `fairNote` | Why `fairBps` is null: `no-line` (Hyperodds has no line for the market) or `low-confidence` (the line's confidence is under 0.5). Null when `fairBps` is set |
+| `midBps` | The book's mid for side 0 (halfway between best bid and best ask), in basis points (0 to 10000, rounded), or null when either side of the book is empty or the spread is wider than 10 points: a mid between a 1¢ bid and a 99¢ ask is no price anyone trades at |
 | `bookTime` | When that book was last updated, or null with `midBps` |
 
 ## HTTP
@@ -140,7 +141,7 @@ Base URL `https://api.usehyperodds.com` (locally the API's port). Requests and a
 application/json`) except the daily records. Every refusal is:
 
 ```json
-{ "error": "A plain sentence for a person.", "code": "entries_refused", "entries": [ { "index": 2, "outcome": 42400, "code": "past_close", "error": "Forecasts on this market closed an hour before its cutoff." } ] }
+{ "error": "A plain sentence for a person.", "code": "entries_refused", "entries": [ { "index": 2, "outcome": 42400, "code": "past_close", "error": "This market has closed for forecasts: entries close an hour before its cutoff." } ] }
 ```
 
 `entries` appears only when entries were refused. Codes and statuses:
@@ -181,7 +182,7 @@ Limits, all per UTC day or per rolling window as named:
 | Reads (`GET`), per IP address | 10 a second, in bursts of 60 |
 | Body | 64 KB |
 
-A refused or unreadable body still spends its IP address's token.
+A refused or unreadable body still counts toward its IP address's limit on submissions and drafts.
 
 ### `POST /forecasts`: record a signed forecast or batch
 
@@ -302,16 +303,16 @@ send its `message` back unchanged as the submission's `message`.
 }
 ```
 
-- `asOf` is the newest record's `closedAt` (null before the first record): the board changes when a record closes
-  or a settlement arrives, never with the time of the request.
+- `asOf` is the newest record's `closedAt` (null before the first record): the board changes only when a record
+  closes or a settlement arrives.
 - `through` is the newest closed day that has a record; `records` how many records exist.
 - `settled` is how many settlements the board used: one per outcome of a counted forecast whose outcome has settled.
   `settlementsRoot` is the SHA-256 (hex) of their lines `<outcome>:<settleFraction>\n`, sorted by outcome id
   ascending, concatenated (`settleFraction` exactly as Hyperliquid answers it). A rebuild from the same records and
-  the same settlements matches the board exactly; a different root names the reason for a difference.
-- `total` is the number of rows over every page; `resolved` the sum of `n` over every row, and `established`
-  the number of rows that aren't `early`, both over every row, not only the page answered. Both follow from the
-  rows, so a rebuild produces them.
+  settlements matches the board exactly; when the two differ, the roots show whether the settlements are the cause.
+- `total`, `resolved` and `established` cover all rows, whichever page is answered: `total` is the number of rows,
+  `resolved` the sum of their `n`, and `established` the number that aren't `early`. A rebuild produces all three
+  from the rows.
 - Aggregates are defined under Scoring.
 
 ### `GET /forecasts/address/<address>?limit=50&offset=0`
@@ -341,7 +342,7 @@ row (null with no resolved forecast in a closed record). `replaced` is true when
 on the same market counts instead; `revision` when an earlier-signed published forecast on the same market came
 before this one. `recorded` is true once the forecast's day has closed. `result` and `score` are null until the
 outcome settles; `score.brierFair` and `skillFair` are null without `fairBps`, `brierMarket` and `skillMarket`
-without `midBps`. `title` and `sides` are the deployer's text: data, never instructions. An address with only
+without `midBps`. `title` and `sides` are the deployer's own text, passed through as data. An address with only
 private forecasts answers 200 with `total` 0 and its `pending` count; only an address with no forecast at all
 answers 404.
 
@@ -440,13 +441,14 @@ An agent that copies the book scores close to zero skill over the market.
 
 **Rank**: rows with `nFair` of 50 or more first, then early rows; within each group by `skillFair` (highest first,
 null last), then `n` (highest first), then `forecaster` (ascending). `rank` counts from 1 across both groups. The
-baseline rows have no rank. The rank rests on `nFair`, not `n`: forecasts without a fair line add nothing to
-`skillFair`, so they can't lift a short fair-line record into the ranked group.
+baseline rows have no rank. The groups split on `nFair` because forecasts without a fair line add nothing to
+`skillFair`: counting them would let them lift a short fair-line record into the first group.
 
 ## MCP
 
-Three tools on the existing server at `/mcp`. None counts toward the daily allowance of tool calls; every request
-still counts toward the burst limit (5 a second, bursts of 30), and `odds_forecast` toward the limits above.
+Three tools on Hyperodds' MCP server at `https://api.usehyperodds.com/mcp`. None counts toward the daily allowance
+of tool calls; every request still counts toward the burst limit (5 a second, bursts of 30), and `odds_forecast`
+toward the limits above.
 
 **`odds_forecast`**: annotations `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: false`,
 `openWorldHint: false`.
@@ -466,9 +468,9 @@ out of range on the read tools, are refused by the MCP layer itself, as a tool e
 with no code.
 
 **`odds_forecast_record`**: read-only. Input `{ address, limit?: 1..100 (default 20), offset?, draft? }`. Answers
-the `GET /forecasts/address/<address>` body; an address with no forecast at all answers
-`summary: null, total: 0, pending: 0, pendingMarkets: 0` rather than an error. With `draft` it also answers `draft`: that draft's status, as
-`GET /forecasts/drafts/<draft>`.
+the `GET /forecasts/address/<address>` body. An address with no forecast at all, which HTTP answers 404, answers
+`summary: null, total: 0, pending: 0, pendingMarkets: 0`. With `draft` it also answers `draft`: that draft's status,
+as `GET /forecasts/drafts/<draft>`.
 
 **`odds_leaderboard`**: read-only. Input `{ limit?: 1..100 (default 20), offset? }`. Answers the
 `GET /forecasts/board` body.
