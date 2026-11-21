@@ -17,8 +17,9 @@ public data, you can recompute every forecaster's score yourself and compare it 
   never changes after that. A scheduled GitHub Action in this repository fetches it at 00:20 UTC and commits it,
   with the rebuilt board, once it verifies.
 - Only days with at least one forecast have a record.
-- When a forecaster sends a new forecast on the same outcome, the latest one counts. The earlier one stays in the
-  record.
+- When a forecaster sends a new forecast on the same outcome, the one signed latest counts, and the earlier one
+  stays in the record. Hyperodds refuses a forecast signed no later than that forecaster's previous one on the
+  outcome, so the order of signing and the order of acceptance agree.
 
 Each line of a record is one forecast:
 
@@ -51,7 +52,9 @@ lists the days there are. For each day, `verify` checks:
 - the file's SHA-256 and its Merkle root against the day's manifest and `records/index.json`;
 - that each line has exactly the record's keys, in order, with no spaces, every value in range, hex in lowercase
   and the nonce written without leading zeros;
-- that each signed message is in the record whole, and that its signature recovers to the line's forecaster;
+- that each signed message is in the record whole, and that its signature recovers to the line's forecaster, with
+  a low `s` and `v` written `1b` or `1c`, so no forecast has a second valid signature;
+- that ids are unique across days, and that each forecaster's signed times on an outcome rise in id order;
 - that each forecast's `acceptedAt` is before entries closed and within the window the server allows around the
   signed time (600 seconds before it to 120 after);
 - that the record closed after 00:05 UTC the next day, no earlier than the day before it, and not in the future.
@@ -115,7 +118,8 @@ A lower Brier score is better, and positive skill means the forecast beat that r
 Bm = 0.156025, skill over the fair line 0.031161 and skill over the market 0.011625.
 
 A forecaster's row on the board covers their counted forecasts. On each outcome, that is their forecast with the
-highest `id` among those whose day has closed, once the outcome has settled.
+latest signed `time` among those whose day has closed (equal times go to the higher `id`), once the outcome has
+settled.
 
 | Field | Meaning |
 |---|---|
@@ -123,11 +127,13 @@ highest `id` among those whose day has closed, once the outcome has settled.
 | `brier` | The mean of B. |
 | `nFair`, `skillFair` | How many have a fair line, and the mean of Bf − B over those. |
 | `nMarket`, `skillMarket` | How many have a mid, and the mean of Bm − B over those. |
-| `early` | True while `n` is under 50. |
+| `early` | True while `nFair` is under 50. |
 
 A mean is the exact integer sum divided by its count, rounded half away from zero to 6 decimals, and null when
-the count is 0. Rows with `n` of 50 or more rank first, then early rows. Within each group, rows rank by
-`skillFair` (highest first, null last), then by `n` (highest first), then by address.
+the count is 0. Rows with `nFair` of 50 or more rank first, then early rows. Within each group, rows rank by
+`skillFair` (highest first, null last), then by `n` (highest first), then by address. The ranked group rests on
+`nFair` because only forecasts with a fair line move `skillFair`: forecasts without one can't lift a short record
+into it.
 
 The board also says what it was built from:
 
@@ -157,13 +163,13 @@ forecaster above zero beat Hyperodds' own estimate on the same markets, at the s
 
 Over a few dozen forecasts, luck and skill look alike. A small advantage takes a few hundred resolved forecasts to
 tell apart from luck.
-The board labels every record with fewer than 50 resolved forecasts as early, ranks it below the full records,
-and shows `n` beside every row.
+The board labels a record early while fewer than 50 of its resolved forecasts have a fair line, ranks it below
+the full records, and shows the counts beside every row.
 
 ## Limits
 
 - **Anyone can make many addresses.** A forecaster is an address, and addresses are free. Among many of them, a
-  lucky one can look good on a short record. The early label and `n` are the guard.
+  lucky one can look good on a short record. The early label and the counts beside every row are the guard.
 - **There are no prizes or rewards.** Nothing is paid for a place on the board. A score measures forecasts against
   settlements and says nothing about trading results.
 - **Hyperodds records the reference prices.** The forecaster's signature covers the outcome, the probability, the
