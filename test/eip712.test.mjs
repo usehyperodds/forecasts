@@ -26,11 +26,11 @@ const SINGLE_SIG =
 const BATCH_SIG =
   "0xf905beb040b0c94625daeb3318c3be48580ec010fec6400f70493dcd3e74c6165dd78927190c61761f03214a1b8a2d065b393ae106adf26edd0b359a2ba1bcd71b";
 
-test("domain separator", () => {
+test("the domain separator matches the spec", () => {
   assert.equal(toHex(DOMAIN_SEPARATOR), "0x8c35fadb67824908e8f620e61384ee244830a28d798764768569090f3d929e37");
 });
 
-test("type strings and hashes", () => {
+test("type strings and type hashes match the spec", () => {
   assert.equal(
     encodeType("Forecast", TYPES.Forecast),
     "Forecast(address forecaster,uint32 outcome,uint16 probabilityBps,uint64 time,uint64 nonce)",
@@ -50,7 +50,7 @@ test("type strings and hashes", () => {
   );
 });
 
-test("digests", () => {
+test("digests match the spec", () => {
   assert.equal(toHex(digest("Forecast", single)), "0x9d68b0769b49c457471adea46b361ce9f832bb2e5bbf8199689d357766c9e754");
   assert.equal(toHex(digest("ForecastBatch", batch)), "0x8628ebe750cec7b7704023cfeb8cbfde075fde486849a3ae9c8931fabc83c139");
 });

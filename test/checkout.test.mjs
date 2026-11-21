@@ -10,7 +10,7 @@ import { promisify } from "node:util";
 const exec = promisify(execFile);
 const repo = fileURLToPath(new URL("..", import.meta.url));
 const verify = join(repo, "scripts", "verify.mjs");
-// Quiet, hook-free git with no signing, whatever the machine's own config says.
+// Hook-free, unsigned git, whatever the machine's own config says.
 const git = (cwd, ...args) =>
   exec("git", ["-c", "core.hooksPath=/dev/null", "-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main", ...args], { cwd });
 

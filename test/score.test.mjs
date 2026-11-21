@@ -103,7 +103,7 @@ test("the forecast with the latest signed time counts, whatever its id; equal ti
   );
 });
 
-test("49 forecasts without a fair line and one winning one with it stay early, below a ranked record", () => {
+test("49 forecasts without a fair line and one lucky one with it stay early, below a ranked record", () => {
   const lines = [];
   for (let o = 1; o <= 49; o++) lines.push(line("0xlucky", o, 9000));
   lines.push(line("0xlucky", 50, 9999, { fair: 5000 }));
@@ -213,7 +213,7 @@ test("the root is over settleFraction exactly as Hyperliquid answers it", async 
   assert.notEqual(c.settlementsRoot, b.settlementsRoot);
 });
 
-test("resolved and established total every row", async () => {
+test("resolved and established count every row", async () => {
   const { days, settlements } = await fixture();
   const b = board(days, settlements);
   assert.equal(b.resolved, b.rows.reduce((n, r) => n + r.n, 0));

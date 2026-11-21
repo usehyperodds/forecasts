@@ -81,7 +81,7 @@ async function withApi(routes, fn) {
   }
 }
 
-test("fetch mirrors missing days, verified, and never rewrites one", async () => {
+test("fetch mirrors missing days once they verify, and never rewrites one", async () => {
   const files = await recordsOf("valid");
   const routes = recordRoutes(files, ["2026-10-22"]);
   await withApi(routes, async (api) => {
@@ -145,7 +145,7 @@ test("fetch refuses a new day older than the newest day held", async () => {
   });
 });
 
-test("fetch --recheck <days>|all fails loudly when a held day's bytes change", async () => {
+test("fetch --recheck <days>|all stops when a held day's bytes change", async () => {
   const files = await recordsOf("valid");
   const routes = recordRoutes(files);
   await withApi(routes, async (api) => {
@@ -286,7 +286,7 @@ describe("score", () => {
     assert.equal(await readFile(join(root, "board.json"), "utf8"), want);
   });
 
-  test("score fails loudly when Hyperliquid changes an answer it gave", async () => {
+  test("score stops when Hyperliquid changes an answer it gave", async () => {
     const was = settlements[1000];
     settlements[1000] = was === "1.0" ? "0.0" : "1.0";
     try {
