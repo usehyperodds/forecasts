@@ -135,6 +135,13 @@ test("a signed time more than 600 s before acceptedAt fails, and 600 s passes", 
   assert.match(e.message, /^2026-10-22, line 4: signed time \d+ is more than 600 s before acceptedAt 2026-10-21T11:30:09\.871Z$/);
 });
 
+test("a signed time more than 120 s after acceptedAt fails, and 120 s passes", async () => {
+  const at = (l, d) => Math.floor(Date.parse(l.acceptedAt) / 1000) + d;
+  verifyRecords(await edited(editTimes((l) => ({ ...l, time: at(l, 120) }))));
+  const e = failure(await edited(editTimes((l) => ({ ...l, time: at(l, 121) }))));
+  assert.match(e.message, /^2026-10-22, line 4: signed time \d+ is more than 120 s after acceptedAt 2026-10-21T11:30:09\.871Z$/);
+});
+
 test("a fair note beside a fair line fails", async () => {
   const e = failure(await edited(editField(0, (l) => ({ ...l, fairNote: "no-line" }))));
   assert.equal(e.message, '2026-10-22, line 1: fairBps is set, so fairNote must be null, not "no-line"');

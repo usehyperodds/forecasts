@@ -20,7 +20,7 @@ test("RFC 6962 roots split at the largest power of two below n", () => {
 
 test("a line has the contract's keys, in order, without spaces", () => {
   const line =
-    '{"id":101,"forecaster":"0x7e5f4552091a69125d5dfcb7b8c2659029395bdf","outcome":42400,"probabilityBps":6200,"acceptedAt":"2026-11-21T10:00:01.234Z","cutoff":"2026-11-22T06:00:00.000Z","fairBps":5810,"fairNote":null,"midBps":6050,"bookTime":"2026-11-21T10:00:00.950Z","batch":17,"index":0,"size":2,"type":"ForecastBatch","time":1763719200,"nonce":"1763719200001","signature":"0xf905…cd71b"}';
+    '{"id":101,"forecaster":"0x7e5f4552091a69125d5dfcb7b8c2659029395bdf","outcome":42400,"probabilityBps":6200,"acceptedAt":"2025-11-21T10:00:01.234Z","cutoff":"2025-11-22T06:00:00.000Z","fairBps":5810,"fairNote":null,"midBps":6050,"bookTime":"2025-11-21T10:00:00.950Z","batch":17,"index":0,"size":2,"type":"ForecastBatch","time":1763719200,"nonce":"1763719200001","signature":"0xf905…cd71b"}';
   const shuffled = Object.fromEntries(Object.entries(JSON.parse(line)).reverse());
   assert.equal(formatLine(shuffled), line);
 });
