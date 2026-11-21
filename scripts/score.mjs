@@ -148,7 +148,8 @@ const outcomes = [...new Set(verified.flatMap((d) => d.lines.map((l) => l.outcom
 if (!values.offline) {
   try {
     const asked = await settle(outcomes, cache);
-    console.log(`asked Hyperliquid about ${asked.settled + asked.open} outcomes: ${asked.settled} settled, ${asked.open} not yet`);
+    const total = asked.settled + asked.open;
+    console.log(`asked Hyperliquid about ${total} ${total === 1 ? "outcome" : "outcomes"}: ${asked.settled} settled, ${asked.open} not yet`);
   } catch (error) {
     console.error(`FAIL ${error.message}`);
     process.exit(1);
