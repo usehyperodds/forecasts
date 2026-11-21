@@ -11,6 +11,9 @@ concurrency:
   group: daily-record
   cancel-in-progress: false
 
+env:
+  HYPERODDS_API: https://api.usehyperodds.com
+
 jobs:
   record:
     runs-on: ubuntu-latest
@@ -19,24 +22,25 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
       - run: npm ci --ignore-scripts
       - run: npm test
-      - run: node scripts/fetch.mjs
+      - name: Fetch new days and check every held day again
+        run: node scripts/fetch.mjs --recheck
       - run: node scripts/verify.mjs
+      - name: Publish the records
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: sh .github/publish.sh records records
       - run: node scripts/score.mjs
-      - name: Commit
-        run: |
-          git add records board.json settlements.json
-          if git diff --cached --quiet; then
-            echo "nothing new"
-            exit 0
-          fi
-          days=$(git diff --cached --name-only --diff-filter=A -- 'records/*.jsonl' | sed 's|^records/||; s|\.jsonl$||' | paste -sd ' ' -)
-          if [ -n "$days" ]; then message="record $days"; else message="settlements and board"; fi
-          git -c user.name="github-actions[bot]" \
-            -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-            commit -q -m "$message"
-          git push
+      - name: Publish the board
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: sh .github/publish.sh board board.json settlements.json
+      - name: Compare with the API's board
+        # Exit 3: the API scored other settlements (one settled in between), which explains the difference.
+        run: node scripts/score.mjs --offline --compare "$HYPERODDS_API" || [ $? -eq 3 ]
