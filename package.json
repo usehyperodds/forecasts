@@ -1,0 +1,21 @@
+{
+  "name": "hyperodds-forecasts",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Hyperodds' public forecast record, its verifier and its open scorer.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "fetch": "node scripts/fetch.mjs",
+    "verify": "node scripts/verify.mjs",
+    "score": "node scripts/score.mjs",
+    "test": "node --test \"test/*.test.mjs\""
+  },
+  "dependencies": {
+    "@noble/curves": "2.4.0",
+    "@noble/hashes": "2.4.0"
+  }
+}
