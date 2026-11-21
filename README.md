@@ -191,6 +191,7 @@ below the rest, and every row shows its counts.
   with an earlier `acceptedAt`, after the price is known, and the record would not show it. Once the record
   closes, nothing in it can change unseen.
 - **An address is not an identity.** Nothing in the record says who holds a key.
+- **Hyperliquid is named for compatibility only.** No partnership, listing or endorsement is implied.
 
 ## Layout
 
