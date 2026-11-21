@@ -16,9 +16,9 @@ are built to it; a change here is a new version of the spec.
 
 ## EIP-712
 
-One domain for both message types. It has no `chainId` and no `verifyingContract`: there is no contract, and a
-domain without a chain id is signed by MetaMask and Rabby on whatever chain the wallet is on (MetaMask checks a
-domain's `chainId` against the active chain only when one is present) and by viem's `signTypedData` as is.
+One domain for both message types. It has no `chainId` and no `verifyingContract`: there is no contract, and
+without a chain id the message doesn't depend on the wallet's network. Signing was checked with viem's
+`signTypedData` and an injected EIP-1193 wallet.
 
 ```ts
 const domain = { name: "Hyperodds Forecasts", version: "1" };
@@ -67,7 +67,7 @@ well-known test key that must never hold funds:
 
 The signature is the 65-byte `r ‖ s ‖ v` hex string that `eth_signTypedData_v4` returns. `v` may be 27/28 or 0/1
 and is written 27/28 in the record. `s` must be in the lower half of the curve order (`s ≤ n/2`, as Ethereum has
-required since EIP-2; viem, ethers, MetaMask and Rabby sign that way); a high-`s` signature is refused as
+required since EIP-2, and as standard Ethereum signers produce); a high-`s` signature is refused as
 `bad_signature`, so no forecast has two valid signatures. The recovered address must equal `forecaster`, in any
 letter case (an all-capitals address signs as its lowercase form).
 
