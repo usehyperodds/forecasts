@@ -1,0 +1,22 @@
+{
+  "days": [
+    {
+      "day": "2026-11-23",
+      "count": 3,
+      "root": "53fc4bbdd6dc873b5618a31caeffdb327641bf0da741c89609f2fe53bd362309",
+      "sha256": "ee1d65aae0465cc734cd761acecb351cc54d1787d2bb7716c6775f3e29a070c8",
+      "bytes": 1493,
+      "closedAt": "2026-11-24T00:05:00.388Z",
+      "url": "https://api.usehyperodds.com/forecasts/records/2026-11-23.jsonl"
+    },
+    {
+      "day": "2026-11-22",
+      "count": 5,
+      "root": "23fdccdd956f7adde3069a27a128e3113f3e2fd58cb86a21dc0423518b5b14fe",
+      "sha256": "7840dcf32896e1d85fcddd0d5c322832f39e3d86c6a98ad4ac768fcfa8422ab4",
+      "bytes": 2505,
+      "closedAt": "2026-11-23T00:05:00.412Z",
+      "url": "https://api.usehyperodds.com/forecasts/records/2026-11-22.jsonl"
+    }
+  ]
+}

@@ -1,0 +1,96 @@
+{
+  "asOf": "2026-11-24T00:05:00.388Z",
+  "through": "2026-11-23",
+  "records": 2,
+  "baselines": [
+    {
+      "key": "fair",
+      "label": "Hyperodds fair line",
+      "n": 73,
+      "brier": 0.321995,
+      "nFair": 73,
+      "skillFair": 0,
+      "nMarket": 68,
+      "skillMarket": -0.033008
+    },
+    {
+      "key": "market",
+      "label": "Market price",
+      "n": 77,
+      "brier": 0.288434,
+      "nFair": 68,
+      "skillFair": 0.033008,
+      "nMarket": 77,
+      "skillMarket": 0
+    }
+  ],
+  "total": 6,
+  "rows": [
+    {
+      "rank": 1,
+      "forecaster": "0x2b5ad5c4795c026514f8317c7a215e218dccd6cf",
+      "n": 56,
+      "brier": 0.3439,
+      "nFair": 51,
+      "skillFair": -0.046356,
+      "nMarket": 52,
+      "skillMarket": -0.068449,
+      "early": false
+    },
+    {
+      "rank": 2,
+      "forecaster": "0xd41c057fd1c78805aac12b0a94a405c0461a6fbb",
+      "n": 3,
+      "brier": 0.292708,
+      "nFair": 3,
+      "skillFair": 0.08712,
+      "nMarket": 3,
+      "skillMarket": -0.020143,
+      "early": true
+    },
+    {
+      "rank": 3,
+      "forecaster": "0xf1f6619b38a98d6de0800f1defc0a6399eb6d30c",
+      "n": 3,
+      "brier": 0.292708,
+      "nFair": 3,
+      "skillFair": 0.08712,
+      "nMarket": 3,
+      "skillMarket": -0.020143,
+      "early": true
+    },
+    {
+      "rank": 4,
+      "forecaster": "0x1eff47bc3a10a45d4b230b5d10e37751fe6aa718",
+      "n": 10,
+      "brier": 0.403794,
+      "nFair": 10,
+      "skillFair": 0,
+      "nMarket": 10,
+      "skillMarket": -0.139542,
+      "early": true
+    },
+    {
+      "rank": 5,
+      "forecaster": "0x6813eb9362372eef6200f3b1dbc3f819671cba69",
+      "n": 6,
+      "brier": 0.386577,
+      "nFair": 6,
+      "skillFair": -0.096934,
+      "nMarket": 5,
+      "skillMarket": -0.103413,
+      "early": true
+    },
+    {
+      "rank": 6,
+      "forecaster": "0xe1ab8145f7e55dc933d51a18c793f901a3a0b276",
+      "n": 4,
+      "brier": 0.309885,
+      "nFair": 0,
+      "skillFair": null,
+      "nMarket": 4,
+      "skillMarket": -0.028617,
+      "early": true
+    }
+  ]
+}
