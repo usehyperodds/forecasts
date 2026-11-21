@@ -35,25 +35,29 @@ Each line of a record is one forecast:
 | `batch`, `index`, `size`, `type` | The signed message the forecast came in, its position in it and how many forecasts it held. |
 | `time`, `nonce`, `signature` | The rest of the signed message, and its signature. |
 
-## Verify a day
+## Verify the record
 
-You need Node 22 or later.
+You need Node 22 or later and git.
 
 ```sh
 git clone https://github.com/usehyperodds/forecasts && cd forecasts
-npm ci
-npm run verify -- 2026-11-22
+npm ci --ignore-scripts
+npm run verify
 ```
 
-Leave out the day to check every record. For each day, `verify` checks:
+That checks every day. To check one, name it, for example `npm run verify -- 2026-11-22`; `records/index.json`
+lists the days there are. For each day, `verify` checks:
 
 - the file's SHA-256 and its Merkle root against the day's manifest and `records/index.json`;
 - that each line has exactly the record's keys, in order, with no spaces, every value in range, hex in lowercase
   and the nonce written without leading zeros;
 - that each signed message is in the record whole, and that its signature recovers to the line's forecaster;
-- that each forecast was accepted before entries closed, and that the record closed after 00:05 UTC the next day.
+- that each forecast's `acceptedAt` is before entries closed and within the window the server allows around the
+  signed time (600 seconds before it to 120 after);
+- that the record closed after 00:05 UTC the next day, no earlier than the day before it, and not in the future.
 
-It stops at the first failure, prints the day, the line and what differs, and exits with status 1.
+It stops at the first failure, prints the day, the line and what differs, and exits with status 1. The times it
+checks are the ones Hyperodds recorded; see Limits for what they do and do not prove.
 
 The Merkle root follows RFC 6962 with SHA-256, over each line's bytes without its newline, so one forecast's
 inclusion can be proven with a path. Signatures are EIP-712, domain `{ name: "Hyperodds Forecasts", version: "1" }`
@@ -74,9 +78,10 @@ git diff board.json
 
 `--refetch` asks Hyperliquid how each outcome settled and stops if any answer differs from `settlements.json`. To
 check the live board, add `--compare https://api.usehyperodds.com`. It reads every page of `GET /forecasts/board`
-and compares each answer byte for byte with the same page of the rebuilt board. When the two boards used different
-settlements, it reports their `settlementsRoot` values, since that difference explains every other one. It happens
-when a market settled after this copy last asked Hyperliquid: run `score` again and compare.
+and compares each answer byte for byte with the same page of the rebuilt board, exiting with status 1 on any
+difference. When the two boards used different settlements, it reports their `settlementsRoot` values instead,
+since that difference explains every other one, and exits with status 3. That happens when a market settled after
+this copy last asked Hyperliquid: run `score` again and compare.
 
 ## How scoring works
 
@@ -89,8 +94,10 @@ curl -s https://api.hyperliquid.xyz/info -H 'content-type: application/json' \
 
 Its `settleFraction` is the share of $1 that side 0 paid: `"1.0"` when side 0 won, `"0.0"` when side 1 won, and a
 value in between when a standalone outcome settles between the two, such as `"0.5"` for a draw. The scorer turns it
-into `o`, the fraction times 10000, rounded half away from zero on the decimal string. Settled outcomes are kept in
-`settlements.json` and never asked again.
+into `o`, the fraction times 10000, rounded half away from zero on the decimal string. Only `0` or `1` with up to
+18 decimals, at most 1, counts as a settlement; anything else leaves the outcome unsettled. Settlements are kept in
+`settlements.json` exactly as Hyperliquid wrote them. Each run asks again about the outcomes in the three newest
+records, and stops if an answer changed.
 
 With `p` the forecast, `f` the fair line and `m` the mid, all in basis points, every score is an integer:
 
@@ -162,6 +169,12 @@ and shows `n` beside every row.
 - **Hyperodds records the reference prices.** The forecaster's signature covers the outcome, the probability, the
   time and the nonce. The fair line, the mid, `acceptedAt` and the cutoff are what Hyperodds recorded at
   acceptance. The daily hash fixes them once the day closes; no one outside Hyperodds attests to them.
+- **Timing rests on Hyperodds' clock.** `verify` checks `acceptedAt` against the close and the signed time, but both
+  come from Hyperodds and the forecaster, so the checks show the record is consistent with itself. They cannot show
+  when a forecast arrived. A price market settles at its cutoff, and its day's record closes at 00:05 UTC the next day. Until then,
+  Hyperodds could add a forecast to that day with an earlier `acceptedAt`, after the price is known, and the record
+  would not show it. What the record proves is what was published at the close: from then on, nothing in it can
+  change unseen.
 - **An address is not an identity.** The record shows which key signed a forecast. It does not show who holds the
   key.
 
@@ -170,14 +183,16 @@ and shows `n` beside every row.
 ```
 records/<day>.jsonl   a day's record, one forecast a line
 records/<day>.json    its manifest: day, count, root, sha256, bytes, closedAt
-records/index.json    every day, newest first, as GET /forecasts/records serves it
+records/index.json    every day's manifest, newest first, with its URL on the API
 settlements.json      each settled outcome's settleFraction
 board.json            the board rebuilt from the above, in the shape of GET /forecasts/board
 scripts/              fetch.mjs, verify.mjs and score.mjs
 test/                 the format's test vectors, and sample records that must fail verify
 ```
 
-`fetch` writes a new day only after the whole record verifies with it, and never rewrites a day it already holds.
+`fetch` writes a new day only after the whole record verifies with it, never rewrites a day it already holds, and
+refuses a new day older than the newest one here. It builds `index.json` from the verified manifests. With
+`--recheck`, which the daily job uses, it fetches every day it holds again and stops if a single byte changed.
 Hashes, roots and scores use only Node's standard library. Signature recovery uses `@noble/curves` and
 `@noble/hashes`, pinned in `package-lock.json`.
 
