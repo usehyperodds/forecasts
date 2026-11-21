@@ -17,7 +17,8 @@ const HOUR_MS = 3_600_000;
 const DAY_MS = 86_400_000;
 /** A day's record closes at 00:05 UTC the next day. */
 const CLOSE_AFTER_MS = DAY_MS + 5 * 60_000;
-/** The server refuses a signed time more than this far ahead of its clock. */
+/** The server takes a signed time from this far behind its clock to this far ahead of it. */
+const TIME_BEHIND_S = 600;
 const TIME_AHEAD_S = 120;
 const BATCH_FIELDS = ["forecaster", "type", "size", "time", "nonce", "signature"];
 
@@ -63,7 +64,7 @@ function json(where, bytes) {
   try {
     return JSON.parse(Buffer.from(bytes).toString("utf8"));
   } catch (error) {
-    throw new RecordError(where, `is not JSON (${error.message})`);
+    throw new RecordError(where, `is not JSON (${JSON.stringify(error.message)})`);
   }
 }
 
@@ -86,8 +87,11 @@ function manifestProblem(m, keys) {
   return null;
 }
 
-/** index.json's entries by day, after checking it lists exactly the days on disk, newest first. */
-function checkIndex(bytes, days) {
+/**
+ * index.json's entries by day, after checking it lists exactly the days on disk, newest first, each
+ * closed no earlier than the day before it and none in the future.
+ */
+function checkIndex(bytes, days, now) {
   const entries = new Map();
   if (bytes === null) {
     if (days.size === 0) return entries;
@@ -101,9 +105,16 @@ function checkIndex(bytes, days) {
     const problem = manifestProblem(entry, [...MANIFEST_KEYS, "url"]);
     if (problem) throw new RecordError("records/index.json", `days[${i}] ${problem}`);
     if (typeof entry.url !== "string") throw new RecordError("records/index.json", `days[${i}].url is not a string`);
-    if (newer !== null && entry.day >= newer)
-      throw new RecordError("records/index.json", `${entry.day} comes after ${newer}; days are listed newest first, once each`);
-    newer = entry.day;
+    if (newer !== null && entry.day >= newer.day)
+      throw new RecordError("records/index.json", `${entry.day} comes after ${newer.day}; days are listed newest first, once each`);
+    if (newer !== null && entry.closedAt > newer.closedAt)
+      throw new RecordError(
+        "records/index.json",
+        `${entry.day} closed at ${entry.closedAt}, after ${newer.day} closed at ${newer.closedAt}; a day is never added after a later one`,
+      );
+    if (Date.parse(entry.closedAt) > now)
+      throw new RecordError("records/index.json", `${entry.day} closed at ${entry.closedAt}, which is in the future`);
+    newer = entry;
     entries.set(entry.day, entry);
   });
   for (const day of entries.keys())
@@ -119,7 +130,7 @@ function checkManifest(day, files, entry) {
   const manifest = json(`records/${day}.json`, files.manifest);
   const problem = manifestProblem(manifest, MANIFEST_KEYS);
   if (problem) throw new RecordError(`records/${day}.json`, problem);
-  if (manifest.day !== day) throw new RecordError(`records/${day}.json`, `names day ${manifest.day}`);
+  if (manifest.day !== day) throw new RecordError(`records/${day}.json`, `names day ${q(manifest.day)}`);
   for (const k of MANIFEST_KEYS)
     if (manifest[k] !== entry[k])
       throw new RecordError(day, `index.json gives ${k} ${q(entry[k])}, but ${day}.json gives ${q(manifest[k])}`);
@@ -134,7 +145,7 @@ function checkLine(day, text, n, prev) {
   try {
     v = JSON.parse(text);
   } catch (error) {
-    throw new RecordError(day, `is not JSON (${error.message})`, n);
+    throw new RecordError(day, `is not JSON (${q(error.message)})`, n);
   }
   if (v === null || typeof v !== "object" || Array.isArray(v)) throw new RecordError(day, "is not a JSON object", n);
   const keys = Object.keys(v);
@@ -154,8 +165,11 @@ function checkLine(day, text, n, prev) {
   const close = Date.parse(v.cutoff) - HOUR_MS;
   if (Date.parse(v.acceptedAt) >= close)
     throw new RecordError(day, `accepted at ${v.acceptedAt}, after entries closed at ${new Date(close).toISOString()}`, n);
-  if (v.time > Math.floor(Date.parse(v.acceptedAt) / 1000) + TIME_AHEAD_S)
+  const acceptedS = Math.floor(Date.parse(v.acceptedAt) / 1000);
+  if (v.time > acceptedS + TIME_AHEAD_S)
     throw new RecordError(day, `signed time ${v.time} is more than ${TIME_AHEAD_S} s after acceptedAt ${v.acceptedAt}`, n);
+  if (v.time < acceptedS - TIME_BEHIND_S)
+    throw new RecordError(day, `signed time ${v.time} is more than ${TIME_BEHIND_S} s before acceptedAt ${v.acceptedAt}`, n);
   return { n, v };
 }
 
@@ -255,8 +269,8 @@ function verifyDay(day, files, entry, seen) {
  * Checks the record, oldest day first, and returns each day's lines. Throws a RecordError naming
  * the first failure. `only` limits the days checked; the index is always checked whole.
  */
-export function verifyRecords(store, { only } = {}) {
-  const entries = checkIndex(store.index, store.days);
+export function verifyRecords(store, { only, now = Date.now() } = {}) {
+  const entries = checkIndex(store.index, store.days, now);
   const days = only ? [...new Set(only)].sort() : [...entries.keys()].sort();
   const seen = { batches: new Map(), nonces: new Map() };
   return days.map((day) => {

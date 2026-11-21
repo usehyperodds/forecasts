@@ -96,7 +96,8 @@ export function lineProblem(l) {
     return `bookTime ${JSON.stringify(l.bookTime)} is not an ISO 8601 UTC time with milliseconds`;
   if (!isInt(l.batch, 0, Number.MAX_SAFE_INTEGER)) return `batch ${JSON.stringify(l.batch)} is not a whole number`;
   if (l.type === "Forecast") {
-    if (l.size !== 1 || l.index !== 0) return `a Forecast has size 1 and index 0, not size ${l.size} and index ${l.index}`;
+    if (l.size !== 1 || l.index !== 0)
+      return `a Forecast has size 1 and index 0, not size ${JSON.stringify(l.size)} and index ${JSON.stringify(l.index)}`;
   } else if (l.type === "ForecastBatch") {
     if (!isInt(l.size, 1, 50)) return `size ${JSON.stringify(l.size)} is not an integer from 1 to 50`;
     if (!isInt(l.index, 0, l.size - 1)) return `index ${JSON.stringify(l.index)} is not from 0 to ${l.size - 1}`;

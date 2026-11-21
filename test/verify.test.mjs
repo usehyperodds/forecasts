@@ -4,8 +4,10 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { digest } from "../scripts/lib/eip712.mjs";
 import { formatLine, merkleRoot, sha256 } from "../scripts/lib/record.mjs";
 import { loadRecords, RecordError, verifyRecords } from "../scripts/lib/verify.mjs";
+import { key, sign } from "./keys.mjs";
 
 const fixtures = fileURLToPath(new URL("fixtures/", import.meta.url));
 const verifyScript = fileURLToPath(new URL("../scripts/verify.mjs", import.meta.url));
@@ -48,6 +50,13 @@ async function edited(change, { stale = false } = {}) {
 const editLine = (i, fn) => (text) =>
   text.replace(/[^\n]+/g, (line, offset) => (text.slice(0, offset).split("\n").length - 1 === i ? fn(line) : line));
 const editField = (i, fn) => editLine(i, (line) => formatLine(fn(JSON.parse(line))));
+/** Line 4 of 2026-10-22 is key 2's one-forecast batch: its time moves and it is signed again. */
+const editTimes = (fn) =>
+  editField(3, (line) => {
+    const l = fn(line);
+    const message = { forecaster: l.forecaster, outcome: l.outcome, probabilityBps: l.probabilityBps, time: l.time, nonce: l.nonce };
+    return { ...l, signature: sign(digest("Forecast", message), key(2)) };
+  });
 
 test("the valid record verifies", async () => {
   const days = verifyRecords(await load("valid"));
@@ -119,6 +128,13 @@ test("a forecast accepted after the close fails", async () => {
   assert.equal(e.message, "2026-10-22, line 4: accepted at 2026-10-22T05:00:00.000Z, after entries closed at 2026-10-22T05:00:00.000Z");
 });
 
+test("a signed time more than 600 s before acceptedAt fails, and 600 s passes", async () => {
+  const at = (l, d) => Math.floor(Date.parse(l.acceptedAt) / 1000) - d;
+  verifyRecords(await edited(editTimes((l) => ({ ...l, time: at(l, 600) }))));
+  const e = failure(await edited(editTimes((l) => ({ ...l, time: at(l, 601) }))));
+  assert.match(e.message, /^2026-10-22, line 4: signed time \d+ is more than 600 s before acceptedAt 2026-10-21T11:30:09\.871Z$/);
+});
+
 test("a fair note beside a fair line fails", async () => {
   const e = failure(await edited(editField(0, (l) => ({ ...l, fairNote: "no-line" }))));
   assert.equal(e.message, '2026-10-22, line 1: fairBps is set, so fairNote must be null, not "no-line"');
@@ -158,6 +174,41 @@ test("a record closed before 00:05 UTC the next day fails", async () => {
     else store.days.get("2026-10-22").manifest = Buffer.from(text);
   }
   assert.equal(failure(store).message, "2026-10-22: closed at 2026-10-22T23:59:00.000Z, before 2026-10-23T00:05:00.000Z");
+});
+
+test("a day closed after a later day fails", async () => {
+  const store = await load("valid");
+  const index = JSON.parse(store.index);
+  const manifest = JSON.parse(store.days.get("2026-10-22").manifest);
+  manifest.closedAt = "2026-10-24T00:05:00.389Z";
+  index.days[1] = { ...index.days[1], closedAt: manifest.closedAt };
+  store.days.get("2026-10-22").manifest = Buffer.from(JSON.stringify(manifest));
+  store.index = Buffer.from(JSON.stringify(index));
+  assert.equal(
+    failure(store).message,
+    "records/index.json: 2026-10-22 closed at 2026-10-24T00:05:00.389Z, after 2026-10-23 closed at 2026-10-24T00:05:00.388Z; a day is never added after a later one",
+  );
+});
+
+test("days closed at the same instant pass", async () => {
+  const store = await load("valid");
+  const index = JSON.parse(store.index);
+  const manifest = JSON.parse(store.days.get("2026-10-22").manifest);
+  manifest.closedAt = index.days[0].closedAt;
+  index.days[1] = { ...index.days[1], closedAt: manifest.closedAt };
+  store.days.get("2026-10-22").manifest = Buffer.from(JSON.stringify(manifest));
+  store.index = Buffer.from(JSON.stringify(index));
+  assert.equal(verifyRecords(store).length, 2);
+});
+
+test("a day closed in the future fails", async () => {
+  const store = await load("valid");
+  const now = Date.parse("2026-10-24T00:05:00.387Z");
+  assert.throws(
+    () => verifyRecords(store, { now }),
+    (e) => e.message === "records/index.json: 2026-10-23 closed at 2026-10-24T00:05:00.388Z, which is in the future",
+  );
+  assert.equal(verifyRecords(store, { now: now + 1 }).length, 2);
 });
 
 test("a batch split across two records fails", async () => {
