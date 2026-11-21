@@ -29,8 +29,8 @@ jobs:
           node-version: 22
       - run: npm ci --ignore-scripts
       - run: npm test
-      - name: Fetch new days and check every held day again
-        run: node scripts/fetch.mjs --recheck
+      - name: Fetch new days and check held ones again (the last 14, every one on Sundays)
+        run: node scripts/fetch.mjs --recheck "$([ "$(date -u +%u)" = 7 ] && echo all || echo 14)"
       - run: node scripts/verify.mjs
       - name: Publish the records
         env:

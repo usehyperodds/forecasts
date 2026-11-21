@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Mirrors the daily records this copy is missing from the Hyperodds API. New days are written only
 // after the whole record, old and new, verifies; a day already here is never rewritten. With
-// --recheck, every day held here is fetched again and must be the same, byte for byte.
+// --recheck <days|all>, the newest days held here (or all of them) are fetched again and must be
+// the same, byte for byte.
 import { link, mkdir, readdir, rename, unlink, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -12,8 +13,12 @@ import { isDay, MANIFEST_KEYS, sha256 } from "./lib/record.mjs";
 import { loadRecords, verifyRecords } from "./lib/verify.mjs";
 
 const { values } = parseArgs({
-  options: { api: { type: "string" }, root: { type: "string" }, recheck: { type: "boolean", default: false } },
+  options: { api: { type: "string" }, root: { type: "string" }, recheck: { type: "string" } },
 });
+if (values.recheck !== undefined && !/^([1-9]\d*|all)$/.test(values.recheck)) {
+  console.error("usage: fetch.mjs [--api <url>] [--root <dir>] [--recheck <days>|all]");
+  process.exit(2);
+}
 const api = (values.api ?? process.env.HYPERODDS_API ?? "https://api.usehyperodds.com").replace(/\/+$/, "");
 const root = resolve(values.root ?? fileURLToPath(new URL("..", import.meta.url)));
 const dir = join(root, "records");
@@ -96,15 +101,16 @@ async function plan() {
     }
     fetched.set(day, files);
   }
+  const held = [...local.days.keys()].filter((d) => !partial.has(d)).sort();
+  const recheck = values.recheck === undefined ? [] : values.recheck === "all" ? held : held.slice(-Number(values.recheck));
   let rechecked = 0;
-  if (values.recheck)
-    for (const [day, files] of local.days) {
-      if (partial.has(day)) continue;
-      const served = await dayFiles(day);
-      same(`records/${day}.jsonl`, files.jsonl, served.jsonl);
-      same(`records/${day}.json`, files.manifest, served.manifest);
-      rechecked++;
-    }
+  for (const day of recheck) {
+    const files = local.days.get(day);
+    const served = await dayFiles(day);
+    same(`records/${day}.jsonl`, files.jsonl, served.jsonl);
+    same(`records/${day}.json`, files.manifest, served.manifest);
+    rechecked++;
+  }
   const days = new Map([...local.days, ...fetched]);
   const verified = verifyRecords({ index: remoteIndex, days });
   const index = indexOf(verified);
@@ -145,5 +151,5 @@ await rename(tmp, join(dir, "index.json"));
 
 for (const d of verified.filter((v) => fetched.has(v.day)))
   console.log(`added ${d.day}  ${d.lines.length} forecasts, root ${d.manifest.root}`);
-if (values.recheck) console.log(`rechecked ${rechecked} held ${rechecked === 1 ? "day" : "days"} against the API: unchanged`);
+if (values.recheck !== undefined) console.log(`rechecked ${rechecked} held ${rechecked === 1 ? "day" : "days"} against the API: unchanged`);
 console.log(fetched.size === 0 ? `up to date, ${verified.length} days` : `${verified.length} days in the record`);

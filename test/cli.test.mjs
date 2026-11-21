@@ -145,16 +145,19 @@ test("fetch refuses a new day older than the newest day held", async () => {
   });
 });
 
-test("fetch --recheck fails loudly when a held day's bytes change", async () => {
+test("fetch --recheck <days>|all fails loudly when a held day's bytes change", async () => {
   const files = await recordsOf("valid");
   const routes = recordRoutes(files);
   await withApi(routes, async (api) => {
     const root = await temp();
     await run("fetch", ["--api", api.url, "--root", root]);
-    assert.match((await run("fetch", ["--api", api.url, "--root", root, "--recheck"])).stdout, /rechecked 2 held days against the API: unchanged/);
+    assert.match((await run("fetch", ["--api", api.url, "--root", root, "--recheck", "all"])).stdout, /rechecked 2 held days against the API: unchanged/);
     routes["/forecasts/records/2026-10-22.jsonl"] = (await recordsOf("tampered-line"))["2026-10-22.jsonl"];
     assert.match((await run("fetch", ["--api", api.url, "--root", root])).stdout, /^up to date/);
-    const stderr = await refused(run("fetch", ["--api", api.url, "--root", root, "--recheck"]));
+    assert.match((await run("fetch", ["--api", api.url, "--root", root, "--recheck", "1"])).stdout, /rechecked 1 held day against the API: unchanged/);
+    let stderr = await refused(run("fetch", ["--api", api.url, "--root", root, "--recheck", "2"]));
+    assert.match(stderr, /^FAIL the API now serves records\/2026-10-22\.jsonl/);
+    stderr = await refused(run("fetch", ["--api", api.url, "--root", root, "--recheck", "all"]));
     assert.match(stderr, /^FAIL the API now serves records\/2026-10-22\.jsonl with sha256 [0-9a-f]{64}, but this copy holds sha256 [0-9a-f]{64}; a closed record never changes/);
   });
 });
@@ -191,6 +194,14 @@ test("fetch writes nothing when a fetched day fails verify", async () => {
     const stderr = await refused(run("fetch", ["--api", api.url, "--root", root]));
     assert.match(stderr, /^FAIL 2026-10-22, lines 1, 2, 3: batch 1's signature recovers to .*; nothing was written/);
     await assert.rejects(readdir(join(root, "records")), { code: "ENOENT" });
+  });
+});
+
+test("fetch --recheck takes a number of days or all", async () => {
+  await assert.rejects(run("fetch", ["--root", await temp(), "--recheck", "0"]), (error) => {
+    assert.equal(error.code, 2);
+    assert.match(error.stderr, /usage: fetch\.mjs .*--recheck <days>\|all/);
+    return true;
   });
 });
 
