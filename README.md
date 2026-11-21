@@ -55,8 +55,8 @@ lists the days there are. For each day, `verify` checks:
 - that each signed message is in the record whole, and that its signature recovers to the line's forecaster, with
   a low `s` and `v` written `1b` or `1c`, so no forecast has a second valid signature;
 - that ids are unique across days, and that each forecaster's signed times on an outcome rise in id order;
-- that each forecast's `acceptedAt` is before entries closed and within the window the server allows around the
-  signed time (600 seconds before it to 120 after);
+- that each forecast's `acceptedAt` is before entries closed, and that its signed time is at most 600 seconds
+  before `acceptedAt` and at most 120 seconds after it, the window the server accepts;
 - that the record closed after 00:05 UTC the next day, no earlier than the day before it, and not in the future.
 
 It stops at the first failure, prints the day, the line and what differs, and exits with status 1. The times it
@@ -143,6 +143,7 @@ The board also says what it was built from:
 | `through`, `records` | The newest day with a record, and how many records there are. |
 | `settled` | How many settlements the board used: one per outcome of a counted forecast that has settled. |
 | `settlementsRoot` | The SHA-256 of those settlements as lines `<outcome>:<settleFraction>\n`, sorted by outcome id, with `settleFraction` exactly as Hyperliquid answers it. |
+| `total`, `resolved`, `established` | Over every row, not only the page shown: how many rows there are, the sum of their `n`, and how many are not early. |
 
 The same records and the same settlements always give the same board, byte for byte.
 
@@ -198,7 +199,8 @@ test/                 the format's test vectors, and sample records that must fa
 
 `fetch` writes a new day only after the whole record verifies with it, never rewrites a day it already holds, and
 refuses a new day older than the newest one here. It builds `index.json` from the verified manifests. With
-`--recheck`, which the daily job uses, it fetches every day it holds again and stops if a single byte changed.
+`--recheck <days>` it fetches the newest days it holds again, or all of them with `--recheck all`, and stops if a
+single byte changed. The daily job rechecks the last 14 days, and every day on Sundays.
 Hashes, roots and scores use only Node's standard library. Signature recovery uses `@noble/curves` and
 `@noble/hashes`, pinned in `package-lock.json`.
 
