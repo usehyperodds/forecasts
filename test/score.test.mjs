@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
-import { board, mean, outcomeBps, scoreBoard, scoreForecast } from "../scripts/lib/score.mjs";
+import { board, mean, outcomeBps, outcomesToAsk, scoreBoard, scoreForecast } from "../scripts/lib/score.mjs";
 import { loadRecords, verifyRecords } from "../scripts/lib/verify.mjs";
 import { addressOf, key } from "./keys.mjs";
 
@@ -41,15 +41,32 @@ test("outcomeBps reads the decimal string and rounds half away from zero", () =>
     "0.0": 0,
     "0.5": 5000,
     1: 10000,
+    0: 0,
+    "1.000": 10000,
     "0.12344": 1234,
     "0.12345": 1235,
     "0.123449999": 1234,
     "0.00005": 1,
     "0.99995": 10000,
+    "0.123456789012345678": 1235,
   };
   for (const [s, want] of Object.entries(cases)) assert.equal(outcomeBps(s), want, s);
-  for (const s of ["1.00005", "2.0", "-0.5", "0.5e1", "", "abc"]) assert.equal(outcomeBps(s), null, s);
+});
+
+test("outcomeBps reads only 0 or 1 with up to 18 decimals, at most 1", () => {
+  for (const s of ["1.00005", "2.0", "-0.5", "-0", "0.5e1", "", "abc", " 1.0", "1.0 ", "1.", ".5", "01.0", "00.5", "0.1234567890123456789", "+1"])
+    assert.equal(outcomeBps(s), null, s);
   assert.equal(outcomeBps(null), null);
+  assert.equal(outcomeBps(1), null);
+});
+
+test("Hyperliquid is asked about unsettled outcomes and those in the three newest records", () => {
+  const day = (d, outcomes) => ({ day: d, lines: outcomes.map((outcome) => ({ outcome })) });
+  const days = [day("2026-10-01", [1, 2]), day("2026-10-02", [3]), day("2026-10-03", [4]), day("2026-10-04", [5, 1])];
+  const cache = { 1: "1.0", 2: "0.0", 3: "1.0", 4: "0.0" };
+  assert.deepEqual(outcomesToAsk(days, cache), { outcomes: [1, 2, 3, 4, 5], ask: [1, 3, 4, 5] });
+  assert.deepEqual(outcomesToAsk(days, cache, { refetch: true }).ask, [1, 2, 3, 4, 5]);
+  assert.deepEqual(outcomesToAsk(days, { ...cache, 5: "1.0" }, { recent: 1 }).ask, [1, 5]);
 });
 
 test("means round half away from zero to 6 decimals", () => {

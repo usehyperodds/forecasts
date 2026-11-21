@@ -4,17 +4,19 @@ export const EARLY_UNDER = 50;
 export const LABELS = { fair: "Hyperodds fair line", market: "Market price" };
 
 /**
- * `settleFraction` × 10000, rounded half away from zero, read off the decimal string; null for
- * anything that is not a decimal from 0 to 1.
+ * `settleFraction` × 10000, rounded half away from zero, read off the decimal string. Only "0" or
+ * "1" with up to 18 decimals and a value of at most 1 reads; anything else is null.
  */
 export function outcomeBps(settleFraction) {
   if (typeof settleFraction !== "string") return null;
-  const m = /^(\d+)(?:\.(\d*))?$/.exec(settleFraction.trim());
+  const m = /^([01])(?:\.(\d{1,18}))?$/.exec(settleFraction);
   if (!m) return null;
-  const digits = `${m[2] ?? ""}00000`;
+  const decimals = m[2] ?? "";
+  if (m[1] === "1" && /[1-9]/.test(decimals)) return null;
+  const digits = `${decimals}00000`;
   let bps = Number(m[1]) * 10_000 + Number(digits.slice(0, 4));
   if (digits[4] >= "5") bps += 1;
-  return bps <= 10_000 ? bps : null;
+  return bps;
 }
 
 /** (x − o)² in units of 10⁻⁸. */
@@ -171,4 +173,15 @@ export function board(days, settlements) {
     total: rows.length,
     rows,
   };
+}
+
+/**
+ * The outcomes in the verified days, and the ones to ask Hyperliquid about: each one not settled
+ * in the cache, each one in the newest `recent` records (asked again, so a wrong or changed answer
+ * shows while the record is fresh), and all of them with `refetch`.
+ */
+export function outcomesToAsk(days, cache, { refetch = false, recent = 3 } = {}) {
+  const outcomes = [...new Set(days.flatMap((d) => d.lines.map((l) => l.outcome)))].sort((a, b) => a - b);
+  const fresh = new Set(days.slice(-recent).flatMap((d) => d.lines.map((l) => l.outcome)));
+  return { outcomes, ask: outcomes.filter((o) => refetch || cache[o] === undefined || fresh.has(o)) };
 }

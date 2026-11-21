@@ -1,14 +1,16 @@
 #!/usr/bin/env node
 // Rebuilds the board from the verified records and Hyperliquid's settlements, and writes board.json.
-// Settled outcomes are kept in settlements.json and never asked again.
+// Settlements are kept in settlements.json; Hyperliquid is asked about unsettled outcomes and again
+// about those in the newest records. With --compare, exits 1 when the API's board differs and 3
+// when it differs only because the two boards used different settlements.
 import { readFile, rename, writeFile } from "node:fs/promises";
-import { setTimeout as sleep } from "node:timers/promises";
 import { join, resolve } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
-import { parseArgs, isDeepStrictEqual } from "node:util";
-import { request } from "./lib/http.mjs";
+import { isDeepStrictEqual, parseArgs } from "node:util";
+import { fetchJson } from "./lib/http.mjs";
 import { firstDifference } from "./lib/record.mjs";
-import { board as buildBoard, outcomeBps } from "./lib/score.mjs";
+import { board as buildBoard, outcomeBps, outcomesToAsk } from "./lib/score.mjs";
 import { loadRecords, verifyRecords } from "./lib/verify.mjs";
 
 const { values } = parseArgs({
@@ -26,6 +28,15 @@ const info = custom ?? "https://api.hyperliquid.xyz/info";
 // Hyperliquid's public info endpoint allows about 60 of these a minute from one address.
 const PACE_MS = custom ? 0 : 1000;
 const PAGE = 200;
+const ANSWER_MAX = 1024 * 1024;
+const BOARD_PAGE_MAX = 8 * 1024 * 1024;
+const SETTLEMENTS_DIFFER = 3;
+const q = JSON.stringify;
+
+function fail(message, code = 1) {
+  console.error(`FAIL ${message}`);
+  process.exit(code);
+}
 
 async function writeJson(path, value) {
   const tmp = `${path}.tmp`;
@@ -41,65 +52,71 @@ async function readCache(path) {
     if (error.code === "ENOENT") return {};
     throw error;
   }
-  const cache = JSON.parse(text);
+  let cache;
+  try {
+    cache = JSON.parse(text);
+  } catch {
+    throw new Error("settlements.json is not JSON");
+  }
   for (const [outcome, fraction] of Object.entries(cache))
-    if (!/^\d+$/.test(outcome) || outcomeBps(fraction) === null)
-      throw new Error(`settlements.json: outcome ${outcome} has ${JSON.stringify(fraction)}, not a settle fraction`);
+    if (!/^(0|[1-9]\d*)$/.test(outcome) || outcomeBps(fraction) === null)
+      throw new Error(`settlements.json: outcome ${q(outcome)} has ${q(fraction)}, not a settle fraction`);
   return cache;
 }
 
 /** Hyperliquid's settleFraction for an outcome, or null while it is unsettled. */
 async function settleFraction(outcome) {
-  const res = await request(info, {
+  const { value } = await fetchJson(info, ANSWER_MAX, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ type: "settledOutcome", outcome }),
   });
-  const answer = await res.json();
-  if (answer === null) return null;
-  if (answer.spec?.outcome !== undefined && answer.spec.outcome !== outcome)
-    throw new Error(`settledOutcome ${outcome} answered for outcome ${answer.spec.outcome}`);
-  if (typeof answer.settleFraction !== "string")
-    throw new Error(`settledOutcome ${outcome} has no settleFraction: ${JSON.stringify(answer).slice(0, 200)}`);
-  return answer.settleFraction;
+  if (value === null) return null;
+  if (value?.spec?.outcome !== outcome)
+    throw new Error(`settledOutcome ${outcome} answered for outcome ${q(value?.spec?.outcome)}`);
+  if (typeof value.settleFraction !== "string") throw new Error(`settledOutcome ${outcome} has no settleFraction`);
+  return value.settleFraction;
 }
 
-async function settle(outcomes, cache) {
-  const asked = { settled: 0, open: 0 };
-  for (const outcome of outcomes) {
+async function settle(days, cache) {
+  const { ask } = outcomesToAsk(days, cache, { refetch: values.refetch });
+  const counts = { settled: 0, confirmed: 0, open: 0 };
+  for (const [i, outcome] of ask.entries()) {
+    if (i > 0) await sleep(PACE_MS);
     const held = cache[outcome];
-    if (held !== undefined && !values.refetch) continue;
-    if (asked.settled + asked.open > 0) await sleep(PACE_MS);
     const fraction = await settleFraction(outcome);
     if (fraction === null) {
-      if (held !== undefined) throw new Error(`settlements.json has outcome ${outcome} settled at ${held}; Hyperliquid answers null`);
-      asked.open++;
+      if (held !== undefined) throw new Error(`settlements.json has outcome ${outcome} settled at ${q(held)}; Hyperliquid now answers null`);
+      counts.open++;
       continue;
     }
     if (held !== undefined && held !== fraction)
-      throw new Error(`settlements.json has outcome ${outcome} settled at ${held}; Hyperliquid answers ${fraction}`);
+      throw new Error(`settlements.json has outcome ${outcome} settled at ${q(held)}; Hyperliquid now answers ${q(fraction)}`);
     if (outcomeBps(fraction) === null) {
-      console.warn(`outcome ${outcome}: settleFraction ${JSON.stringify(fraction)} is not a decimal from 0 to 1; left unsettled`);
-      asked.open++;
+      console.warn(`outcome ${outcome}: settleFraction ${q(fraction)} is not 0, 1 or a decimal between them; left unsettled`);
+      counts.open++;
       continue;
     }
+    if (held === undefined) counts.settled++;
+    else counts.confirmed++;
     cache[outcome] = fraction;
-    asked.settled++;
   }
-  return asked;
+  return { asked: ask.length, ...counts };
 }
+
+const segment = (k) => (/^[A-Za-z_$][\w$]*$/.test(k) ? `.${k}` : `[${q(k)}]`);
 
 function differences(ours, theirs, path = "", out = []) {
   if (out.length >= 20 || isDeepStrictEqual(ours, theirs)) return out;
   const object = (v) => v !== null && typeof v === "object";
   if (!object(ours) || !object(theirs) || Array.isArray(ours) !== Array.isArray(theirs)) {
-    out.push(`${path || "(board)"}: api ${JSON.stringify(theirs)}, rebuilt ${JSON.stringify(ours)}`);
+    out.push(`${path.replace(/^\./, "") || "(board)"}: api ${q(theirs)}, rebuilt ${q(ours)}`);
     return out;
   }
   const keys = Array.isArray(ours)
     ? [...Array(Math.max(ours.length, theirs.length)).keys()]
     : [...new Set([...Object.keys(theirs), ...Object.keys(ours)])];
-  for (const k of keys) differences(ours[k], theirs[k], Array.isArray(ours) ? `${path}[${k}]` : path ? `${path}.${k}` : k, out);
+  for (const k of keys) differences(ours[k], theirs[k], Array.isArray(ours) ? `${path}[${k}]` : `${path}${segment(k)}`, out);
   return out;
 }
 
@@ -116,68 +133,65 @@ async function compare(url, rebuilt) {
   for (let offset = 0; offset === 0 || offset < total; offset += PAGE) {
     target.searchParams.set("limit", String(PAGE));
     target.searchParams.set("offset", String(offset));
-    const text = await (await request(target)).text();
-    const theirs = JSON.parse(text);
-    total = Math.max(total, theirs.total ?? 0);
+    const { text, value: theirs } = await fetchJson(target, BOARD_PAGE_MAX);
+    total = Math.max(total, Number.isSafeInteger(theirs?.total) ? theirs.total : 0);
     const ours = JSON.stringify({ ...rebuilt, rows: rebuilt.rows.slice(offset, offset + PAGE) });
     if (ours === text) {
-      console.log(`page offset=${offset}: ${theirs.rows?.length ?? 0} rows, ${Buffer.byteLength(text)} bytes, identical`);
+      console.log(`page offset=${offset}: ${rebuilt.rows.slice(offset, offset + PAGE).length} rows, ${Buffer.byteLength(text)} bytes, identical`);
       continue;
     }
-    if (theirs.settlementsRoot !== rebuilt.settlementsRoot) {
+    if (theirs?.settlementsRoot !== rebuilt.settlementsRoot) {
       console.error(
-        `the API scored ${theirs.settled} settlements (settlementsRoot ${theirs.settlementsRoot}); this rebuild scored ${rebuilt.settled} (settlementsRoot ${rebuilt.settlementsRoot}). The boards were built from different settlements.`,
+        `the API scored ${q(theirs?.settled)} settlements (settlementsRoot ${q(theirs?.settlementsRoot)}); this rebuild scored ${rebuilt.settled} (settlementsRoot ${q(rebuilt.settlementsRoot)}). The boards were built from different settlements.`,
       );
-      return false;
+      return "settlements";
     }
     const list = differences(JSON.parse(ours), theirs);
     console.error(`page offset=${offset} differs:`);
     if (list.length === 0) console.error(`  same values, different bytes ${firstDifference(ours, text)}`);
     for (const d of list) console.error(`  ${d}`);
-    return false;
+    return "differs";
   }
-  return true;
+  return "same";
 }
 
 let verified;
+let cache;
+const cachePath = join(root, "settlements.json");
 try {
   verified = verifyRecords(await loadRecords(join(root, "records")));
+  cache = await readCache(cachePath);
 } catch (error) {
-  console.error(`FAIL ${error.message}; the board was not rebuilt`);
-  process.exit(1);
+  fail(`${error.message}; the board was not rebuilt`);
 }
 
-const cachePath = join(root, "settlements.json");
-const cache = await readCache(cachePath);
-const outcomes = [...new Set(verified.flatMap((d) => d.lines.map((l) => l.outcome)))].sort((a, b) => a - b);
 if (!values.offline) {
   try {
-    const asked = await settle(outcomes, cache);
-    const total = asked.settled + asked.open;
-    console.log(`asked Hyperliquid about ${total} ${total === 1 ? "outcome" : "outcomes"}: ${asked.settled} settled, ${asked.open} not yet`);
+    const c = await settle(verified, cache);
+    console.log(
+      `asked Hyperliquid about ${c.asked} ${c.asked === 1 ? "outcome" : "outcomes"}: ${c.settled} newly settled, ${c.confirmed} confirmed, ${c.open} not yet`,
+    );
   } catch (error) {
-    console.error(`FAIL ${error.message}`);
-    process.exit(1);
+    fail(error.message);
   }
   await writeJson(cachePath, cache);
 }
 
 const rebuilt = buildBoard(verified, new Map(Object.entries(cache).map(([o, f]) => [Number(o), f])));
 await writeJson(join(root, "board.json"), rebuilt);
+const outcomes = new Set(verified.flatMap((d) => d.lines.map((l) => l.outcome))).size;
 console.log(
-  `board.json: ${rebuilt.total} forecasters, ${outcomes.length} outcomes (${rebuilt.settled} settled, settlementsRoot ${rebuilt.settlementsRoot}), through ${rebuilt.through ?? "no record yet"}`,
+  `board.json: ${rebuilt.total} forecasters, ${outcomes} outcomes (${rebuilt.settled} settled, settlementsRoot ${rebuilt.settlementsRoot}), through ${rebuilt.through ?? "no record yet"}`,
 );
 
 if (values.compare) {
-  let same;
+  let result;
   try {
-    same = await compare(values.compare, rebuilt);
+    result = await compare(values.compare, rebuilt);
   } catch (error) {
-    console.error(`FAIL ${error.message}`);
-    process.exit(1);
+    fail(error.message);
   }
-  if (!same) {
-    console.error(`FAIL the rebuilt board differs from ${values.compare}`);
-    process.exit(1);
-  }
+  if (result === "settlements")
+    fail(`the board at ${values.compare} used other settlements than this rebuild`, SETTLEMENTS_DIFFER);
+  if (result === "differs") fail(`the rebuilt board differs from ${values.compare}`);
 }
