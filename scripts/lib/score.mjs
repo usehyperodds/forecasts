@@ -47,13 +47,13 @@ export function scoreForecast({ probabilityBps: p, fairBps: f, midBps: m }, o) {
   };
 }
 
-/** For each forecaster and outcome, the line with the highest id. */
+/** For each forecaster and outcome, the line with the latest signed time; equal times go to the higher id. */
 export function countedLines(lines) {
   const latest = new Map();
   for (const l of lines) {
     const key = `${l.forecaster}:${l.outcome}`;
     const seen = latest.get(key);
-    if (!seen || l.id > seen.id) latest.set(key, l);
+    if (!seen || l.time > seen.time || (l.time === seen.time && l.id > seen.id)) latest.set(key, l);
   }
   return [...latest.values()];
 }
@@ -125,7 +125,7 @@ export function scoreBoard(lines, results) {
     rank: 0,
     forecaster,
     ...stats(t),
-    early: t.n < EARLY_UNDER,
+    early: t.nFair < EARLY_UNDER,
   }));
   rows.sort(byRank);
   rows.forEach((r, i) => {

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
-import { board, mean, outcomeBps, outcomesToAsk, scoreBoard, scoreForecast } from "../scripts/lib/score.mjs";
+import { board, countedLines, mean, outcomeBps, outcomesToAsk, scoreBoard, scoreForecast } from "../scripts/lib/score.mjs";
 import { loadRecords, verifyRecords } from "../scripts/lib/verify.mjs";
 import { addressOf, key } from "./keys.mjs";
 
@@ -79,6 +79,44 @@ test("means round half away from zero to 6 decimals", () => {
   assert.equal(mean(0n, 0), null);
 });
 
+let nextId = 1;
+const line = (forecaster, outcome, p, { fair = null, mid = null, time = 1000, id = nextId++ } = {}) => ({
+  id,
+  forecaster,
+  outcome,
+  probabilityBps: p,
+  fairBps: fair,
+  midBps: mid,
+  time,
+});
+
+test("the forecast with the latest signed time counts, whatever its id; equal times go to the higher id", () => {
+  const lines = [
+    line("0xa", 1, 9000, { id: 10, time: 2000 }),
+    line("0xa", 1, 1000, { id: 11, time: 1999 }),
+    line("0xa", 2, 3000, { id: 12, time: 5000 }),
+    line("0xa", 2, 4000, { id: 13, time: 5000 }),
+  ];
+  assert.deepEqual(
+    countedLines(lines).map((l) => l.id).sort(),
+    [10, 13],
+  );
+});
+
+test("49 forecasts without a fair line and one winning one with it stay early, below a ranked record", () => {
+  const lines = [];
+  for (let o = 1; o <= 49; o++) lines.push(line("0xlucky", o, 9000));
+  lines.push(line("0xlucky", 50, 9999, { fair: 5000 }));
+  for (let o = 1; o <= 50; o++) lines.push(line("0xsteady", o, 5100, { fair: 5000 }));
+  const results = new Map(Array.from({ length: 50 }, (_, i) => [i + 1, 10000]));
+  const { rows } = scoreBoard(lines, results);
+  const lucky = rows.find((r) => r.forecaster === "0xlucky");
+  const steady = rows.find((r) => r.forecaster === "0xsteady");
+  assert.deepEqual([lucky.n, lucky.nFair, lucky.early, lucky.rank], [50, 1, true, 2]);
+  assert.deepEqual([steady.n, steady.nFair, steady.early, steady.rank], [50, 50, false, 1]);
+  assert.ok(lucky.skillFair > steady.skillFair);
+});
+
 test("the scoring fixture rebuilds the known board", async () => {
   const { days, settlements } = await fixture();
   const want = await readFile(join(scoring, "board.json"), "utf8");
@@ -92,8 +130,8 @@ test("the known board's rows follow the contract", async () => {
   assert.equal(b.asOf, "2026-10-24T00:05:00.388Z");
   assert.equal(b.through, "2026-10-23");
   assert.equal(b.records, 2);
-  // 56 resolved forecasts: ranked first, not early, though its skill is below every early row's.
-  assert.deepEqual([row(2).rank, row(2).n, row(2).early], [1, 56, false]);
+  // 51 resolved forecasts with a fair line: ranked first, not early, though its skill is below every early row's.
+  assert.deepEqual([row(2).rank, row(2).nFair, row(2).early], [1, 51, false]);
   assert.ok(b.rows.some((r) => r.early && r.skillFair > row(2).skillFair));
   // Copying the fair line scores exactly 0 over it.
   assert.equal(row(4).skillFair, 0);
