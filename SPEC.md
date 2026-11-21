@@ -461,11 +461,15 @@ toward the limits above.
 
 With `signed` it records and answers `{ "status": "recorded", ...the POST /forecasts answer }`. With `forecasts`
 it answers `{ "status": "draft", ...the POST /forecasts/drafts answer }`: show the `url` to the person, whose wallet
-signs it there, or sign `typedData` locally and call again with `signed`. A refusal is a tool error whose text is
-the refusal's `error`, with `{ code, entries }` in `structuredContent`: the same codes as HTTP, `batch_size` for 51
-entries included. Only arguments of the wrong JSON type (a string for `forecasts`, say), and `limit` or `offset`
-out of range on the read tools, are refused by the MCP layer itself, as a tool error `Input validation error: …`
-with no code.
+signs it there, or sign `typedData` locally and call again with `signed`. A refusal is a tool error
+(`isError: true`) whose text is the refusal's `error` and whose `structuredContent` is
+`{ "status": "refused", "code", "entries" }`: the same codes as HTTP, `batch_size` for 51 entries included, and
+`entries` as HTTP gives them, `[]` when the refusal is about the whole request. The tool's output schema is one
+object covering all three statuses, so a client that checks structured content against it, as the official MCP
+SDK's `Client.callTool` does, gets a refusal back as a result. Only arguments of the wrong JSON type (a string for
+`forecasts`, say), and `limit` or `offset` out of range on the read tools, are refused by the MCP layer itself, as
+a tool error `Input validation error: …` with no `structuredContent`. The read tools never refuse with a code: an
+error there is a tool error with text only.
 
 **`odds_forecast_record`**: read-only. Input `{ address, limit?: 1..100 (default 20), offset?, draft? }`. Answers
 the `GET /forecasts/address/<address>` body. An address with no forecast at all, which HTTP answers 404, answers
