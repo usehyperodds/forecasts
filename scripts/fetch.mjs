@@ -6,18 +6,24 @@ import { link, mkdir, readdir, rename, unlink, writeFile } from "node:fs/promise
 import { join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
-import { parseArgs } from "node:util";
+import { cliArgs, usageError } from "./lib/cli.mjs";
 import { fetchBytes } from "./lib/http.mjs";
 import { isDay, MANIFEST_KEYS, sha256 } from "./lib/record.mjs";
 import { loadRecords, verifyRecords } from "./lib/verify.mjs";
 
-const { values } = parseArgs({
-  options: { api: { type: "string" }, root: { type: "string" }, recheck: { type: "string" } },
-});
-if (values.recheck !== undefined && !/^([1-9]\d*|all)$/.test(values.recheck)) {
-  console.error("usage: fetch.mjs [--api <url>] [--root <dir>] [--recheck <days>|all]");
-  process.exit(2);
-}
+const USAGE = `usage: node scripts/fetch.mjs [--api <url>] [--root <dir>] [--recheck <days>|all]
+
+Mirrors the daily records this copy lacks from the Hyperodds API. New days are written only once the
+whole record verifies; a day already held is never rewritten.
+
+  --api <url>            the API (default: $HYPERODDS_API, else https://api.usehyperodds.com)
+  --root <dir>           the directory holding records/ (default: this repository)
+  --recheck <days>|all   fetch that many of the newest held days again, or all, and stop on any changed byte
+  -h, --help             print this help`;
+
+const { values } = cliArgs(USAGE, { api: { type: "string" }, root: { type: "string" }, recheck: { type: "string" } });
+if (values.recheck !== undefined && !/^([1-9]\d*|all)$/.test(values.recheck))
+  usageError(USAGE, `--recheck takes a number of days or all, not ${JSON.stringify(values.recheck)}`);
 const api = (values.api ?? process.env.HYPERODDS_API ?? "https://api.usehyperodds.com").replace(/\/+$/, "");
 const root = resolve(values.root ?? fileURLToPath(new URL("..", import.meta.url)));
 const dir = join(root, "records");

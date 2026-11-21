@@ -4,20 +4,21 @@
 // is not a date.
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseArgs } from "node:util";
+import { cliArgs, usageError } from "./lib/cli.mjs";
 import { isDay } from "./lib/record.mjs";
 import { loadRecords, RecordError, verifyRecords } from "./lib/verify.mjs";
 
-const { values, positionals } = parseArgs({
-  allowPositionals: true,
-  options: { root: { type: "string" } },
-});
+const USAGE = `usage: node scripts/verify.mjs [--root <dir>] [YYYY-MM-DD ...]
+
+Checks the daily records under records/, every day or the days named: hashes, line format, times and
+signatures. Exits 1 at the first failure.
+
+  --root <dir>   the directory holding records/ (default: this repository)
+  -h, --help     print this help`;
+
+const { values, positionals } = cliArgs(USAGE, { root: { type: "string" } }, { positionals: true });
 const root = resolve(values.root ?? fileURLToPath(new URL("..", import.meta.url)));
-for (const day of positionals)
-  if (!isDay(day)) {
-    console.error(`${JSON.stringify(day)} is not a day\nusage: verify.mjs [--root <dir>] [YYYY-MM-DD ...]`);
-    process.exit(2);
-  }
+for (const day of positionals) if (!isDay(day)) usageError(USAGE, `${JSON.stringify(day)} is not a day`);
 
 try {
   const store = await loadRecords(join(root, "records"));

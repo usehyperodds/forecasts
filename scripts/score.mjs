@@ -7,20 +7,31 @@ import { readFile, rename, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
-import { isDeepStrictEqual, parseArgs } from "node:util";
+import { isDeepStrictEqual } from "node:util";
+import { cliArgs } from "./lib/cli.mjs";
 import { fetchJson } from "./lib/http.mjs";
 import { firstDifference } from "./lib/record.mjs";
 import { board as buildBoard, outcomeBps, outcomesToAsk } from "./lib/score.mjs";
 import { loadRecords, verifyRecords } from "./lib/verify.mjs";
 
-const { values } = parseArgs({
-  options: {
-    root: { type: "string" },
-    hl: { type: "string" },
-    offline: { type: "boolean", default: false },
-    refetch: { type: "boolean", default: false },
-    compare: { type: "string" },
-  },
+const USAGE = `usage: node scripts/score.mjs [--root <dir>] [--hl <url>] [--offline] [--refetch] [--compare <url>]
+
+Rebuilds board.json from the verified records and Hyperliquid's settlements, kept in settlements.json.
+
+  --root <dir>      the directory holding records/ and settlements.json (default: this repository)
+  --hl <url>        Hyperliquid's info endpoint (default: $HL_INFO_URL, else https://api.hyperliquid.xyz/info)
+  --offline         use settlements.json only and ask Hyperliquid nothing
+  --refetch         ask Hyperliquid about every outcome again, and stop if an answer changed
+  --compare <url>   check every page of that API's board byte for byte: exit 1 on a difference, 3 when
+                    the only cause is that the two boards used different settlements
+  -h, --help        print this help`;
+
+const { values } = cliArgs(USAGE, {
+  root: { type: "string" },
+  hl: { type: "string" },
+  offline: { type: "boolean", default: false },
+  refetch: { type: "boolean", default: false },
+  compare: { type: "string" },
 });
 const root = resolve(values.root ?? fileURLToPath(new URL("..", import.meta.url)));
 const custom = values.hl ?? process.env.HL_INFO_URL;

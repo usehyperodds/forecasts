@@ -200,7 +200,7 @@ test("fetch writes nothing when a fetched day fails verify", async () => {
 test("fetch --recheck takes a number of days or all", async () => {
   await assert.rejects(run("fetch", ["--root", await temp(), "--recheck", "0"]), (error) => {
     assert.equal(error.code, 2);
-    assert.match(error.stderr, /usage: fetch\.mjs .*--recheck <days>\|all/);
+    assert.match(error.stderr, /^--recheck takes a number of days or all, not "0"\n\nusage: node scripts\/fetch\.mjs .*--recheck <days>\|all/);
     return true;
   });
 });
