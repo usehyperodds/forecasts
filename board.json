@@ -1,0 +1,29 @@
+{
+  "asOf": null,
+  "through": null,
+  "records": 0,
+  "baselines": [
+    {
+      "key": "fair",
+      "label": "Hyperodds fair line",
+      "n": 0,
+      "brier": null,
+      "nFair": 0,
+      "skillFair": null,
+      "nMarket": 0,
+      "skillMarket": null
+    },
+    {
+      "key": "market",
+      "label": "Market price",
+      "n": 0,
+      "brier": null,
+      "nFair": 0,
+      "skillFair": null,
+      "nMarket": 0,
+      "skillMarket": null
+    }
+  ],
+  "total": 0,
+  "rows": []
+}
