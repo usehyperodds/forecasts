@@ -2,6 +2,8 @@
   "asOf": null,
   "through": null,
   "records": 0,
+  "settled": 0,
+  "settlementsRoot": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
   "baselines": [
     {
       "key": "fair",

@@ -187,9 +187,9 @@ describe("score", () => {
     }
   });
 
-  test("score --compare checks every page of the API's board byte for byte", async () => {
+  test("score --compare checks every page of the API's board byte for byte, asOf included", async () => {
     const known = JSON.parse(await readFile(join(fixtures, "scoring", "board.json"), "utf8"));
-    let served = { ...known, asOf: "2026-11-24T00:07:12.345Z" };
+    let served = known;
     const pages = [];
     const api = await serve({
       "/forecasts/board": (url) => {
@@ -202,16 +202,27 @@ describe("score", () => {
     const args = ["--root", root, "--hl", `${hl.url}/info`, "--offline", "--compare"];
     try {
       const out = await run("score", [...args, api.url]);
-      assert.match(out.stdout, /api asOf 2026-11-24T00:07:12\.345Z, rebuilt asOf 2026-11-24T00:05:00\.388Z \(not compared\)/);
       assert.match(out.stdout, /page offset=0: 6 rows, \d+ bytes, identical/);
       assert.deepEqual(pages, [[200, 0]]);
 
-      served = { ...served, rows: served.rows.map((r, i) => (i === 1 ? { ...r, skillFair: r.skillFair + 0.000001 } : r)) };
-      let stderr = await refused(run("score", [...args, `${api.url}/forecasts/board`]));
+      served = { ...known, asOf: "2026-11-24T00:07:12.345Z" };
+      let stderr = await refused(run("score", [...args, api.url]));
+      assert.match(stderr, /asOf: api "2026-11-24T00:07:12\.345Z", rebuilt "2026-11-24T00:05:00\.388Z"/);
+
+      served = { ...known, rows: known.rows.map((r, i) => (i === 1 ? { ...r, skillFair: r.skillFair + 0.000001 } : r)) };
+      stderr = await refused(run("score", [...args, `${api.url}/forecasts/board`]));
       assert.match(stderr, /rows\[1\]\.skillFair: api [-\d.]+, rebuilt [-\d.]+/);
       assert.match(stderr, /FAIL the rebuilt board differs/);
 
-      served = Object.fromEntries(Object.entries({ ...known, asOf: "x" }).reverse());
+      served = { ...served, settled: known.settled + 1, settlementsRoot: "ab".repeat(32) };
+      stderr = await refused(run("score", [...args, api.url]));
+      assert.match(
+        stderr,
+        new RegExp(`the API scored 57 settlements \\(settlementsRoot ${"ab".repeat(32)}\\); this rebuild scored 56 \\(settlementsRoot ${known.settlementsRoot}\\)\\. The boards were built from different settlements\\.`),
+      );
+      assert.doesNotMatch(stderr, /rows\[/);
+
+      served = Object.fromEntries(Object.entries(known).reverse());
       stderr = await refused(run("score", [...args, api.url]));
       assert.match(stderr, /same values, different bytes at character \d+/);
     } finally {

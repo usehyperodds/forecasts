@@ -2,6 +2,8 @@
   "asOf": "2026-11-24T00:05:00.388Z",
   "through": "2026-11-23",
   "records": 2,
+  "settled": 56,
+  "settlementsRoot": "8c77b20cdbe651e9c90b34f067039fe604179b99a6ddc9ec8ce7e4b44d798137",
   "baselines": [
     {
       "key": "fair",

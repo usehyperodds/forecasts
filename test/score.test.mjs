@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { createHash } from "node:crypto";
 import { board, mean, outcomeBps, scoreBoard, scoreForecast } from "../scripts/lib/score.mjs";
 import { loadRecords, verifyRecords } from "../scripts/lib/verify.mjs";
 import { addressOf, key } from "./keys.mjs";
@@ -11,9 +12,10 @@ const scoring = fileURLToPath(new URL("fixtures/scoring/", import.meta.url));
 
 async function fixture() {
   const days = verifyRecords(await loadRecords(join(scoring, "records")));
-  const settlements = JSON.parse(await readFile(join(scoring, "settlements.json"), "utf8"));
-  const results = new Map(Object.entries(settlements).map(([o, f]) => [Number(o), outcomeBps(f)]));
-  return { days, results };
+  const json = JSON.parse(await readFile(join(scoring, "settlements.json"), "utf8"));
+  const settlements = new Map(Object.entries(json).map(([o, f]) => [Number(o), f]));
+  const results = new Map([...settlements].map(([o, f]) => [o, outcomeBps(f)]));
+  return { days, settlements, results };
 }
 
 test("the contract's scoring example", () => {
@@ -61,14 +63,14 @@ test("means round half away from zero to 6 decimals", () => {
 });
 
 test("the scoring fixture rebuilds the known board", async () => {
-  const { days, results } = await fixture();
+  const { days, settlements } = await fixture();
   const want = await readFile(join(scoring, "board.json"), "utf8");
-  assert.equal(`${JSON.stringify(board(days, results), null, 2)}\n`, want);
+  assert.equal(`${JSON.stringify(board(days, settlements), null, 2)}\n`, want);
 });
 
 test("the known board's rows follow the contract", async () => {
-  const { days, results } = await fixture();
-  const b = board(days, results);
+  const { days, settlements } = await fixture();
+  const b = board(days, settlements);
   const row = (n) => b.rows.find((r) => r.forecaster === addressOf(key(n)));
   assert.equal(b.asOf, "2026-11-24T00:05:00.388Z");
   assert.equal(b.through, "2026-11-23");
@@ -108,12 +110,47 @@ test("the latest forecast counts, across records", async () => {
 });
 
 test("baseline rows pool every counted, resolved forecast", async () => {
-  const { days, results } = await fixture();
-  const [fair, market] = board(days, results).baselines;
+  const { days, settlements } = await fixture();
+  const [fair, market] = board(days, settlements).baselines;
   assert.deepEqual([fair.key, fair.label, fair.skillFair, fair.n === fair.nFair], ["fair", "Hyperodds fair line", 0, true]);
   assert.deepEqual([market.key, market.label, market.skillMarket, market.n === market.nMarket], ["market", "Market price", 0, true]);
   assert.equal(fair.nMarket, market.nFair);
   assert.equal(fair.skillMarket, -market.skillFair);
+});
+
+test("the board names its settlements: count and root over the counted outcomes", async () => {
+  const { days, settlements } = await fixture();
+  const b = board(days, settlements);
+  const counted = new Set(days.flatMap((d) => d.lines.map((l) => l.outcome)));
+  const used = [...settlements.keys()].filter((o) => counted.has(o)).sort((a, b) => a - b);
+  const text = used.map((o) => `${o}:${settlements.get(o)}\n`).join("");
+  assert.equal(b.settled, 56);
+  assert.equal(b.settled, used.length);
+  assert.equal(b.settlementsRoot, createHash("sha256").update(text).digest("hex"));
+  assert.deepEqual(Object.keys(b), ["asOf", "through", "records", "settled", "settlementsRoot", "baselines", "total", "rows"]);
+});
+
+test("a settlement no counted forecast uses, or an unreadable one, is not in the root", async () => {
+  const { days, settlements } = await fixture();
+  const b = board(days, settlements);
+  const extra = new Map([...settlements, [999999, "1.0"], [1058, "1.5"]]);
+  assert.deepEqual([board(days, extra).settled, board(days, extra).settlementsRoot], [b.settled, b.settlementsRoot]);
+});
+
+test("the root is over settleFraction exactly as Hyperliquid answers it", async () => {
+  const { days, settlements } = await fixture();
+  const b = board(days, settlements);
+  const respelled = new Map(settlements);
+  respelled.set(1000, settlements.get(1000) === "1.0" ? "1" : "0");
+  const c = board(days, respelled);
+  assert.deepEqual(c.rows, b.rows);
+  assert.notEqual(c.settlementsRoot, b.settlementsRoot);
+});
+
+test("asOf is the newest record's closedAt", async () => {
+  const { days, settlements } = await fixture();
+  assert.equal(board(days, settlements).asOf, days.at(-1).manifest.closedAt);
+  assert.equal(board(days.slice(0, 1), settlements).asOf, "2026-11-23T00:05:00.412Z");
 });
 
 test("an empty record gives an empty board", () => {
@@ -121,6 +158,8 @@ test("an empty record gives an empty board", () => {
     asOf: null,
     through: null,
     records: 0,
+    settled: 0,
+    settlementsRoot: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     baselines: [
       { key: "fair", label: "Hyperodds fair line", n: 0, brier: null, nFair: 0, skillFair: null, nMarket: 0, skillMarket: null },
       { key: "market", label: "Market price", n: 0, brier: null, nFair: 0, skillFair: null, nMarket: 0, skillMarket: null },

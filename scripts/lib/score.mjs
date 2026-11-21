@@ -1,3 +1,5 @@
+import { sha256 } from "./record.mjs";
+
 export const EARLY_UNDER = 50;
 export const LABELS = { fair: "Hyperodds fair line", market: "Market price" };
 
@@ -137,19 +139,34 @@ export function scoreBoard(lines, results) {
 }
 
 /**
- * The board in the shape of GET /forecasts/board, every row included. `asOf` is the newest
- * record's close, so the same records and settlements always give the same bytes.
+ * The settlements a board uses: one per outcome of a counted forecast that has settled, with the
+ * SHA-256 of their `<outcome>:<settleFraction>\n` lines in outcome order.
  */
-export function board(days, results) {
-  const { baselines, rows } = scoreBoard(
-    days.flatMap((d) => d.lines),
-    results,
-  );
-  const newest = days.map((d) => d.manifest.closedAt).sort().at(-1) ?? null;
+export function settlementsUsed(lines, settlements) {
+  const used = [...new Set(countedLines(lines).map((l) => l.outcome))]
+    .filter((o) => outcomeBps(settlements.get(o)) !== null)
+    .sort((a, b) => a - b);
+  const text = used.map((o) => `${o}:${settlements.get(o)}\n`).join("");
+  return { settled: used.length, settlementsRoot: sha256(Buffer.from(text)).toString("hex") };
+}
+
+/**
+ * The board in the shape of GET /forecasts/board, every row included, from verified days (oldest
+ * first) and settlements (outcome id → settleFraction as Hyperliquid answers it).
+ */
+export function board(days, settlements) {
+  const lines = days.flatMap((d) => d.lines);
+  const results = new Map();
+  for (const [o, f] of settlements) {
+    const bps = outcomeBps(f);
+    if (bps !== null) results.set(o, bps);
+  }
+  const { baselines, rows } = scoreBoard(lines, results);
   return {
-    asOf: newest,
+    asOf: days.at(-1)?.manifest.closedAt ?? null,
     through: days.at(-1)?.day ?? null,
     records: days.length,
+    ...settlementsUsed(lines, settlements),
     baselines,
     total: rows.length,
     rows,

@@ -105,33 +105,38 @@ function differences(ours, theirs, path = "", out = []) {
 
 /**
  * Asks the API for every page of its board and checks each answer, byte for byte, against the same
- * page of the rebuilt board. `asOf` is when the API computed its copy, so it is shown, not compared.
+ * page of the rebuilt board. Boards built from different settlements differ for that reason alone,
+ * so a different settlementsRoot is reported in place of the rows it explains.
  */
 async function compare(url, rebuilt) {
   const target = new URL(url);
   if (!target.pathname.endsWith("/forecasts/board"))
     target.pathname = `${target.pathname.replace(/\/+$/, "")}/forecasts/board`;
-  let failed = false;
   let total = rebuilt.total;
-  for (let offset = 0, page = 0; offset === 0 || offset < total; offset += PAGE, page++) {
+  for (let offset = 0; offset === 0 || offset < total; offset += PAGE) {
     target.searchParams.set("limit", String(PAGE));
     target.searchParams.set("offset", String(offset));
     const text = await (await request(target)).text();
     const theirs = JSON.parse(text);
     total = Math.max(total, theirs.total ?? 0);
-    if (page === 0) console.log(`api asOf ${theirs.asOf}, rebuilt asOf ${rebuilt.asOf} (not compared)`);
-    const ours = JSON.stringify({ ...rebuilt, asOf: theirs.asOf, rows: rebuilt.rows.slice(offset, offset + PAGE) });
+    const ours = JSON.stringify({ ...rebuilt, rows: rebuilt.rows.slice(offset, offset + PAGE) });
     if (ours === text) {
       console.log(`page offset=${offset}: ${theirs.rows?.length ?? 0} rows, ${Buffer.byteLength(text)} bytes, identical`);
       continue;
     }
-    failed = true;
+    if (theirs.settlementsRoot !== rebuilt.settlementsRoot) {
+      console.error(
+        `the API scored ${theirs.settled} settlements (settlementsRoot ${theirs.settlementsRoot}); this rebuild scored ${rebuilt.settled} (settlementsRoot ${rebuilt.settlementsRoot}). The boards were built from different settlements.`,
+      );
+      return false;
+    }
     const list = differences(JSON.parse(ours), theirs);
     console.error(`page offset=${offset} differs:`);
     if (list.length === 0) console.error(`  same values, different bytes ${firstDifference(ours, text)}`);
     for (const d of list) console.error(`  ${d}`);
+    return false;
   }
-  return !failed;
+  return true;
 }
 
 let verified;
@@ -157,12 +162,10 @@ if (!values.offline) {
   await writeJson(cachePath, cache);
 }
 
-const results = new Map(Object.entries(cache).map(([o, f]) => [Number(o), outcomeBps(f)]));
-const rebuilt = buildBoard(verified, results);
+const rebuilt = buildBoard(verified, new Map(Object.entries(cache).map(([o, f]) => [Number(o), f])));
 await writeJson(join(root, "board.json"), rebuilt);
-const settled = outcomes.filter((o) => results.has(o)).length;
 console.log(
-  `board.json: ${rebuilt.total} forecasters, ${outcomes.length} outcomes (${settled} settled), through ${rebuilt.through ?? "no record yet"}`,
+  `board.json: ${rebuilt.total} forecasters, ${outcomes.length} outcomes (${rebuilt.settled} settled, settlementsRoot ${rebuilt.settlementsRoot}), through ${rebuilt.through ?? "no record yet"}`,
 );
 
 if (values.compare) {
