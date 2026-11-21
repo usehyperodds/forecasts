@@ -125,7 +125,7 @@ test("a record without its final newline fails", async () => {
 
 test("a forecast accepted after the close fails", async () => {
   const e = failure(await edited(editField(3, (l) => ({ ...l, acceptedAt: "2026-10-22T05:00:00.000Z" }))));
-  assert.equal(e.message, "2026-10-22, line 4: accepted at 2026-10-22T05:00:00.000Z, after entries closed at 2026-10-22T05:00:00.000Z");
+  assert.equal(e.message, "2026-10-22, line 4: accepted at 2026-10-22T05:00:00.000Z; entries closed at 2026-10-22T05:00:00.000Z");
 });
 
 test("a signed time more than 600 s before acceptedAt fails, and 600 s passes", async () => {

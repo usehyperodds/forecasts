@@ -11,7 +11,8 @@ function waitMs(res, attempt) {
 
 /**
  * The body of a 2xx answer, at most `max` bytes, retrying network errors, 429 and 5xx. Any other
- * status throws. Text from the server only ever appears JSON-quoted in an error.
+ * status throws. Server text reaches an error only JSON-quoted, so it cannot pass for a GitHub
+ * Actions workflow command.
  */
 export async function fetchBytes(url, max, init = {}) {
   for (let attempt = 1; ; attempt++) {

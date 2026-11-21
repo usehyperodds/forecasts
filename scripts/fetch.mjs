@@ -1,8 +1,7 @@
 #!/usr/bin/env node
-// Mirrors the daily records this copy is missing from the Hyperodds API. New days are written only
-// after the whole record, old and new, verifies; a day already here is never rewritten. With
-// --recheck <days|all>, the newest days held here (or all of them) are fetched again and must be
-// the same, byte for byte.
+// Mirrors the daily records this copy lacks from the Hyperodds API. A new day is written only once
+// the whole record, old days and new, verifies, and a day already held is never rewritten.
+// --recheck <days>|all fetches the newest held days again and stops on any changed byte.
 import { link, mkdir, readdir, rename, unlink, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -59,8 +58,8 @@ async function dayFiles(day) {
   };
 }
 
-/** index.json as this copy writes it: the verified manifests, newest first. */
-function indexOf(verified) {
+/** Built from the verified manifests, so it lists only what verified, whatever the API's index says. */
+function buildIndex(verified) {
   const days = verified
     .map((d) => ({ ...Object.fromEntries(MANIFEST_KEYS.map((k) => [k, d.manifest[k]])), url: `${api}/forecasts/records/${d.day}.jsonl` }))
     .reverse();
@@ -113,7 +112,7 @@ async function plan() {
   }
   const days = new Map([...local.days, ...fetched]);
   const verified = verifyRecords({ index: remoteIndex, days });
-  const index = indexOf(verified);
+  const index = buildIndex(verified);
   verifyRecords({ index, days });
   return { local, fetched, verified, index, rechecked };
 }

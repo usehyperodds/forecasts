@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// Checks every daily record under records/: hashes against manifest and index, line format,
-// batch completeness and every signature. Exits 1 on the first failure.
+// Checks the daily records under records/ against their manifests and the index, then each line's
+// format and times and each batch's signature. Exits 1 at the first failure, and 2 when a named day
+// is not a date.
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -14,7 +15,7 @@ const { values, positionals } = parseArgs({
 const root = resolve(values.root ?? fileURLToPath(new URL("..", import.meta.url)));
 for (const day of positionals)
   if (!isDay(day)) {
-    console.error(`usage: verify.mjs [--root <dir>] [YYYY-MM-DD ...]; ${JSON.stringify(day)} is not a day`);
+    console.error(`${JSON.stringify(day)} is not a day\nusage: verify.mjs [--root <dir>] [YYYY-MM-DD ...]`);
     process.exit(2);
   }
 

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// Rebuilds the board from the verified records and Hyperliquid's settlements, and writes board.json.
-// Settlements are kept in settlements.json; Hyperliquid is asked about unsettled outcomes and again
-// about those in the newest records. With --compare, exits 1 when the API's board differs and 3
-// when it differs only because the two boards used different settlements.
+// Rebuilds board.json from the verified records and Hyperliquid's settlements, kept in
+// settlements.json. Hyperliquid is asked about unsettled outcomes, and again about those in the
+// newest records. --compare exits 1 when the API's board differs, and 3 when the only cause is that
+// the two boards used different settlements.
 import { readFile, rename, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -25,7 +25,8 @@ const { values } = parseArgs({
 const root = resolve(values.root ?? fileURLToPath(new URL("..", import.meta.url)));
 const custom = values.hl ?? process.env.HL_INFO_URL;
 const info = custom ?? "https://api.hyperliquid.xyz/info";
-// Hyperliquid's public info endpoint allows about 60 of these a minute from one address.
+// Hyperliquid's public info endpoint allows about 60 of these a minute from one address. A custom
+// endpoint (a mirror, a test server) is not paced.
 const PACE_MS = custom ? 0 : 1000;
 const PAGE = 200;
 const ANSWER_MAX = 1024 * 1024;
@@ -121,9 +122,8 @@ function differences(ours, theirs, path = "", out = []) {
 }
 
 /**
- * Asks the API for every page of its board and checks each answer, byte for byte, against the same
- * page of the rebuilt board. Boards built from different settlements differ for that reason alone,
- * so a different settlementsRoot is reported in place of the rows it explains.
+ * Boards built from different settlements differ for that reason alone, so a different
+ * settlementsRoot is reported in place of the rows it explains.
  */
 async function compare(url, rebuilt) {
   const target = new URL(url);
@@ -192,6 +192,6 @@ if (values.compare) {
     fail(error.message);
   }
   if (result === "settlements")
-    fail(`the board at ${values.compare} used other settlements than this rebuild`, SETTLEMENTS_DIFFER);
+    fail(`the board at ${values.compare} was built from different settlements`, SETTLEMENTS_DIFFER);
   if (result === "differs") fail(`the rebuilt board differs from ${values.compare}`);
 }

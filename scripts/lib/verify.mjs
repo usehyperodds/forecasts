@@ -164,7 +164,7 @@ function checkLine(day, text, n, prev) {
   if (v.cutoff.slice(0, 10) !== day) throw new RecordError(day, `cutoff ${v.cutoff} is not on ${day}`, n);
   const close = Date.parse(v.cutoff) - HOUR_MS;
   if (Date.parse(v.acceptedAt) >= close)
-    throw new RecordError(day, `accepted at ${v.acceptedAt}, after entries closed at ${new Date(close).toISOString()}`, n);
+    throw new RecordError(day, `accepted at ${v.acceptedAt}; entries closed at ${new Date(close).toISOString()}`, n);
   const acceptedS = Math.floor(Date.parse(v.acceptedAt) / 1000);
   if (v.time > acceptedS + TIME_AHEAD_S)
     throw new RecordError(day, `signed time ${v.time} is more than ${TIME_AHEAD_S} s after acceptedAt ${v.acceptedAt}`, n);
@@ -185,7 +185,6 @@ function messageOf(group) {
   };
 }
 
-/** Ids are unique across days. */
 function checkIds(day, lines, seen) {
   for (const l of lines) {
     const elsewhere = seen.ids.get(l.v.id);
@@ -312,7 +311,7 @@ export function verifyRecords(store, { only, now = Date.now() } = {}) {
   const seen = { ids: new Map(), batches: new Map(), nonces: new Map() };
   const verified = days.map((day) => {
     const entry = entries.get(day);
-    if (!entry) throw new RecordError(day, "is not in the record");
+    if (!entry) throw new RecordError(day, "has no record");
     return verifyDay(day, store.days.get(day), entry, seen);
   });
   checkOrder(verified);
