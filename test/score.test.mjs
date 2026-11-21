@@ -72,8 +72,8 @@ test("the known board's rows follow the contract", async () => {
   const { days, settlements } = await fixture();
   const b = board(days, settlements);
   const row = (n) => b.rows.find((r) => r.forecaster === addressOf(key(n)));
-  assert.equal(b.asOf, "2026-11-24T00:05:00.388Z");
-  assert.equal(b.through, "2026-11-23");
+  assert.equal(b.asOf, "2026-10-24T00:05:00.388Z");
+  assert.equal(b.through, "2026-10-23");
   assert.equal(b.records, 2);
   // 56 resolved forecasts: ranked first, not early, though its skill is below every early row's.
   assert.deepEqual([row(2).rank, row(2).n, row(2).early], [1, 56, false]);
@@ -99,8 +99,8 @@ test("the latest forecast counts, across records", async () => {
   assert.deepEqual(
     on1010.map((l) => [l.cutoff.slice(0, 10), l.probabilityBps]),
     [
-      ["2026-11-22", on1010[0].probabilityBps],
-      ["2026-11-23", 1200],
+      ["2026-10-22", on1010[0].probabilityBps],
+      ["2026-10-23", 1200],
     ],
   );
   const only = (keep) => scoreBoard(lines.filter(keep), results).rows.find((r) => r.forecaster === b3);
@@ -150,7 +150,7 @@ test("the root is over settleFraction exactly as Hyperliquid answers it", async 
 test("asOf is the newest record's closedAt", async () => {
   const { days, settlements } = await fixture();
   assert.equal(board(days, settlements).asOf, days.at(-1).manifest.closedAt);
-  assert.equal(board(days.slice(0, 1), settlements).asOf, "2026-11-23T00:05:00.412Z");
+  assert.equal(board(days.slice(0, 1), settlements).asOf, "2026-10-23T00:05:00.412Z");
 });
 
 test("an empty record gives an empty board", () => {

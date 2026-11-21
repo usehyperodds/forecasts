@@ -67,19 +67,19 @@ after(() => Promise.all(temps.map((d) => rm(d, { recursive: true, force: true })
 
 test("fetch mirrors missing days, verified, and never rewrites one", async () => {
   const files = await recordsOf("valid");
-  const routes = recordRoutes(files, ["2026-11-22"]);
+  const routes = recordRoutes(files, ["2026-10-22"]);
   const api = await serve(routes);
   const root = await temp();
   try {
     let out = await run("fetch", ["--api", api.url, "--root", root]);
-    assert.match(out.stdout, /^added 2026-11-22 {2}5 forecasts/);
-    const first = await stat(join(root, "records", "2026-11-22.jsonl"));
+    assert.match(out.stdout, /^added 2026-10-22 {2}5 forecasts/);
+    const first = await stat(join(root, "records", "2026-10-22.jsonl"));
 
     Object.assign(routes, recordRoutes(files));
     out = await run("fetch", ["--api", api.url, "--root", root]);
-    assert.match(out.stdout, /^added 2026-11-23 {2}3 forecasts/);
+    assert.match(out.stdout, /^added 2026-10-23 {2}3 forecasts/);
     for (const f of Object.keys(files)) assert.deepEqual(await readFile(join(root, "records", f)), files[f], f);
-    assert.equal((await stat(join(root, "records", "2026-11-22.jsonl"))).mtimeMs, first.mtimeMs);
+    assert.equal((await stat(join(root, "records", "2026-10-22.jsonl"))).mtimeMs, first.mtimeMs);
 
     out = await run("fetch", ["--api", api.url, "--root", root]);
     assert.match(out.stdout, /^up to date, 2 days/);
@@ -101,7 +101,7 @@ test("fetch refuses a closed day that changed, and writes nothing", async () => 
     index.days[1].sha256 = "0".repeat(64);
     routes["/forecasts/records"] = JSON.stringify(index);
     const stderr = await refused(run("fetch", ["--api", api.url, "--root", root]));
-    assert.match(stderr, /^FAIL the API now gives 2026-11-22 sha256 "0{64}", but this copy holds "[0-9a-f]{64}"; a closed record never changes; nothing was written/);
+    assert.match(stderr, /^FAIL the API now gives 2026-10-22 sha256 "0{64}", but this copy holds "[0-9a-f]{64}"; a closed record never changes; nothing was written/);
     assert.deepEqual(await readFile(join(root, "records", "index.json")), before);
   } finally {
     await api.close();
@@ -113,7 +113,7 @@ test("fetch writes nothing when a fetched day fails verify", async () => {
   const root = await temp();
   try {
     const stderr = await refused(run("fetch", ["--api", api.url, "--root", root]));
-    assert.match(stderr, /^FAIL 2026-11-22, lines 1, 2, 3: batch 1's signature recovers to .*; nothing was written/);
+    assert.match(stderr, /^FAIL 2026-10-22, lines 1, 2, 3: batch 1's signature recovers to .*; nothing was written/);
     await assert.rejects(readdir(join(root, "records")), { code: "ENOENT" });
   } finally {
     await api.close();
@@ -205,9 +205,9 @@ describe("score", () => {
       assert.match(out.stdout, /page offset=0: 6 rows, \d+ bytes, identical/);
       assert.deepEqual(pages, [[200, 0]]);
 
-      served = { ...known, asOf: "2026-11-24T00:07:12.345Z" };
+      served = { ...known, asOf: "2026-10-24T00:07:12.345Z" };
       let stderr = await refused(run("score", [...args, api.url]));
-      assert.match(stderr, /asOf: api "2026-11-24T00:07:12\.345Z", rebuilt "2026-11-24T00:05:00\.388Z"/);
+      assert.match(stderr, /asOf: api "2026-10-24T00:07:12\.345Z", rebuilt "2026-10-24T00:05:00\.388Z"/);
 
       served = { ...known, rows: known.rows.map((r, i) => (i === 1 ? { ...r, skillFair: r.skillFair + 0.000001 } : r)) };
       stderr = await refused(run("score", [...args, `${api.url}/forecasts/board`]));

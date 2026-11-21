@@ -1,22 +1,22 @@
 {
   "days": [
     {
-      "day": "2026-11-23",
+      "day": "2026-10-23",
       "count": 3,
-      "root": "53fc4bbdd6dc873b5618a31caeffdb327641bf0da741c89609f2fe53bd362309",
-      "sha256": "ee1d65aae0465cc734cd761acecb351cc54d1787d2bb7716c6775f3e29a070c8",
+      "root": "78edda215fc567efe87fd5778f1be0062aa368ba30d27b71c6db0afee49d017c",
+      "sha256": "e963f5588ae538206b19a36646be8dc6530147738aa3f4a91fc9c191190dcc8e",
       "bytes": 1493,
-      "closedAt": "2026-11-24T00:05:00.388Z",
-      "url": "https://api.usehyperodds.com/forecasts/records/2026-11-23.jsonl"
+      "closedAt": "2026-10-24T00:05:00.388Z",
+      "url": "https://api.usehyperodds.com/forecasts/records/2026-10-23.jsonl"
     },
     {
-      "day": "2026-11-22",
+      "day": "2026-10-22",
       "count": 4,
-      "root": "5b782f9460a3c8fb1dbf4e2666f837f1c3825b78f199fa93ddbcc5597570478c",
-      "sha256": "3af09079f2581e22fb42544c965d1df263bbeae478509d5f30701ea3e490a6e0",
+      "root": "6c09d42fbf8acf52f32b6d4e1c10ca3db61c8c82f42462205d7be79714c6baa1",
+      "sha256": "9373420db15e7b97ce56ff5f4884cef70f0dcf149152ecf53f3e2c9d7af0b9e0",
       "bytes": 2022,
-      "closedAt": "2026-11-23T00:05:00.412Z",
-      "url": "https://api.usehyperodds.com/forecasts/records/2026-11-22.jsonl"
+      "closedAt": "2026-10-23T00:05:00.412Z",
+      "url": "https://api.usehyperodds.com/forecasts/records/2026-10-22.jsonl"
     }
   ]
 }

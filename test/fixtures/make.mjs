@@ -95,13 +95,13 @@ function byDay(lines, closedAt) {
   return days;
 }
 
-const CLOSED = { "2026-11-22": "2026-11-23T00:05:00.412Z", "2026-11-23": "2026-11-24T00:05:00.388Z" };
+const CLOSED = { "2026-10-22": "2026-10-23T00:05:00.412Z", "2026-10-23": "2026-10-24T00:05:00.388Z" };
 
 const valid = linesOf([
   {
     key: key(1),
-    cutoff: "2026-11-22T06:00:00.000Z",
-    acceptedAt: "2026-11-21T10:00:01.234Z",
+    cutoff: "2026-10-22T06:00:00.000Z",
+    acceptedAt: "2026-10-21T10:00:01.234Z",
     single: false,
     entries: [
       { outcome: 42400, p: 6200, fair: 5810, mid: 6050 },
@@ -109,13 +109,13 @@ const valid = linesOf([
       { outcome: 42602, p: 8800, fair: 9120 },
     ],
   },
-  { key: key(2), cutoff: "2026-11-23T14:00:00.000Z", acceptedAt: "2026-11-21T10:12:44.020Z", entries: [{ outcome: 43010, p: 4500, fair: 4400, mid: 4720 }] },
-  { key: key(2), cutoff: "2026-11-22T06:00:00.000Z", acceptedAt: "2026-11-21T11:30:09.871Z", entries: [{ outcome: 42400, p: 5500, fair: 5830, mid: 6010 }] },
-  { key: key(1), cutoff: "2026-11-22T06:00:00.000Z", acceptedAt: "2026-11-22T04:59:59.999Z", entries: [{ outcome: 42400, p: 6600, fair: 5900, mid: 6120 }] },
+  { key: key(2), cutoff: "2026-10-23T14:00:00.000Z", acceptedAt: "2026-10-21T10:12:44.020Z", entries: [{ outcome: 43010, p: 4500, fair: 4400, mid: 4720 }] },
+  { key: key(2), cutoff: "2026-10-22T06:00:00.000Z", acceptedAt: "2026-10-21T11:30:09.871Z", entries: [{ outcome: 42400, p: 5500, fair: 5830, mid: 6010 }] },
+  { key: key(1), cutoff: "2026-10-22T06:00:00.000Z", acceptedAt: "2026-10-22T04:59:59.999Z", entries: [{ outcome: 42400, p: 6600, fair: 5900, mid: 6120 }] },
   {
     key: key(3),
-    cutoff: "2026-11-23T14:00:00.000Z",
-    acceptedAt: "2026-11-22T21:40:00.500Z",
+    cutoff: "2026-10-23T14:00:00.000Z",
+    acceptedAt: "2026-10-22T21:40:00.500Z",
     entries: [
       { outcome: 43010, p: 3900, fair: 4380, mid: 4600 },
       { outcome: 43011, p: 7100 },
@@ -123,17 +123,17 @@ const valid = linesOf([
   },
 ]);
 
-/** Breaks one line of 2026-11-22 in the valid set. `recompute` rewrites the manifests to match. */
+/** Breaks one line of 2026-10-22 in the valid set. `recompute` rewrites the manifests to match. */
 async function variant(name, change, recompute = true) {
   const days = byDay(valid.map((l) => ({ ...l })), CLOSED);
-  const original = days["2026-11-22"].text.slice();
-  days["2026-11-22"].text = change(days["2026-11-22"].text);
+  const original = days["2026-10-22"].text.slice();
+  days["2026-10-22"].text = change(days["2026-10-22"].text);
   const dir = join(here, name);
   await writeRecords(dir, days);
   if (recompute) return;
   // Leave the published manifest and index as they were: someone edited the committed record.
-  const m = manifest("2026-11-22", original, CLOSED["2026-11-22"]);
-  await writeFile(join(dir, "records", "2026-11-22.json"), jsonFile(m));
+  const m = manifest("2026-10-22", original, CLOSED["2026-10-22"]);
+  await writeFile(join(dir, "records", "2026-10-22.json"), jsonFile(m));
   const clean = byDay(valid.map((l) => ({ ...l })), CLOSED);
   const index = Object.keys(clean)
     .sort()
@@ -169,7 +169,7 @@ const rand = (lo, hi) => {
   return lo + (seed % (hi - lo + 1));
 };
 const outcomes = Array.from({ length: 60 }, (_, i) => 1000 + i);
-const cutoffOf = (o) => (o % 2 === 0 ? "2026-11-22T18:00:00.000Z" : "2026-11-23T09:30:00.000Z");
+const cutoffOf = (o) => (o % 2 === 0 ? "2026-10-22T18:00:00.000Z" : "2026-10-23T09:30:00.000Z");
 const settle = (o) => (o === 1005 ? "0.5" : o >= 1058 ? null : o % 3 === 0 ? "0.0" : "1.0");
 const market = new Map(outcomes.map((o) => [o, { fair: rand(1500, 8500), mid: rand(1500, 8500) }]));
 const quote = (o, p) => {
@@ -178,21 +178,21 @@ const quote = (o, p) => {
 };
 const submissions = [];
 const file = (k, os, acceptedAt, p) => {
-  for (const cutoff of ["2026-11-22T18:00:00.000Z", "2026-11-23T09:30:00.000Z"]) {
+  for (const cutoff of ["2026-10-22T18:00:00.000Z", "2026-10-23T09:30:00.000Z"]) {
     const mine = os.filter((o) => cutoffOf(o) === cutoff);
     for (let i = 0; i < mine.length; i += 25)
       submissions.push({ key: key(k), cutoff, acceptedAt, single: false, entries: mine.slice(i, i + 25).map((o) => quote(o, p(o))) });
   }
 };
-file(2, outcomes.slice(0, 56), "2026-11-21T08:15:30.100Z", () => rand(500, 9500));
-file(3, [1001, 1002, 1005, 1010, 1020, 1033, 1058], "2026-11-21T09:00:00.000Z", () => rand(1000, 9000));
-file(4, outcomes.slice(20, 30), "2026-11-21T09:30:00.000Z", (o) => market.get(o).fair ?? 5000);
-file(5, [1008, 1019, 1030, 1041], "2026-11-21T10:00:00.000Z", () => rand(2000, 8000));
-file(6, [1058, 1059], "2026-11-21T10:30:00.000Z", () => 5000);
-for (const k of [7, 8]) file(k, [1012, 1013, 1014], "2026-11-21T11:00:00.000Z", (o) => 3000 + o);
+file(2, outcomes.slice(0, 56), "2026-10-21T08:15:30.100Z", () => rand(500, 9500));
+file(3, [1001, 1002, 1005, 1010, 1020, 1033, 1058], "2026-10-21T09:00:00.000Z", () => rand(1000, 9000));
+file(4, outcomes.slice(20, 30), "2026-10-21T09:30:00.000Z", (o) => market.get(o).fair ?? 5000);
+file(5, [1008, 1019, 1030, 1041], "2026-10-21T10:00:00.000Z", () => rand(2000, 8000));
+file(6, [1058, 1059], "2026-10-21T10:30:00.000Z", () => 5000);
+for (const k of [7, 8]) file(k, [1012, 1013, 1014], "2026-10-21T11:00:00.000Z", (o) => 3000 + o);
 // Replacements: the later forecast counts, even when the market's cutoff moved to another day.
-submissions.push({ key: key(3), cutoff: cutoffOf(1002), acceptedAt: "2026-11-21T15:45:00.000Z", entries: [quote(1002, 9100)] });
-submissions.push({ key: key(3), cutoff: "2026-11-23T09:30:00.000Z", acceptedAt: "2026-11-21T16:00:00.000Z", entries: [quote(1010, 1200)] });
+submissions.push({ key: key(3), cutoff: cutoffOf(1002), acceptedAt: "2026-10-21T15:45:00.000Z", entries: [quote(1002, 9100)] });
+submissions.push({ key: key(3), cutoff: "2026-10-23T09:30:00.000Z", acceptedAt: "2026-10-21T16:00:00.000Z", entries: [quote(1010, 1200)] });
 
 const scoring = linesOf(submissions);
 await writeRecords(join(here, "scoring"), byDay(scoring, CLOSED));
