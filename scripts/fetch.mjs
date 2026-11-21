@@ -157,4 +157,5 @@ await rename(tmp, join(dir, "index.json"));
 for (const d of verified.filter((v) => fetched.has(v.day)))
   console.log(`added ${d.day}  ${d.lines.length} forecasts, root ${d.manifest.root}`);
 if (values.recheck !== undefined) console.log(`rechecked ${rechecked} held ${rechecked === 1 ? "day" : "days"} against the API: unchanged`);
-console.log(fetched.size === 0 ? `up to date, ${verified.length} days` : `${verified.length} days in the record`);
+const days = `${verified.length} ${verified.length === 1 ? "day" : "days"}`;
+console.log(fetched.size === 0 ? `up to date, ${days}` : `${days} in the record`);
