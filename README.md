@@ -31,7 +31,7 @@ Each line of a record is one forecast:
 | `acceptedAt` | When Hyperodds accepted the forecast. |
 | `cutoff` | The market's cutoff, as recorded at acceptance. |
 | `fairBps`, `fairNote` | Hyperodds' fair line for side 0 at acceptance. When it is null, `fairNote` says why: `no-line` or `low-confidence`. |
-| `midBps`, `bookTime` | The book's mid for side 0 at acceptance, and when that book last changed. Null when either side of the book was empty. |
+| `midBps`, `bookTime` | The book's mid for side 0 at acceptance, and when that book last changed. Null when either side of the book was empty or its spread was wider than 10 points. |
 | `batch`, `index`, `size`, `type` | The signed message the forecast came in, its position in it and how many forecasts it held. |
 | `time`, `nonce`, `signature` | The rest of the signed message, and its signature. |
 
@@ -48,7 +48,8 @@ npm run verify -- 2026-11-22
 Leave out the day to check every record. For each day, `verify` checks:
 
 - the file's SHA-256 and its Merkle root against the day's manifest and `records/index.json`;
-- that each line has exactly the record's keys, in order, with no spaces and every value in range;
+- that each line has exactly the record's keys, in order, with no spaces, every value in range, hex in lowercase
+  and the nonce written without leading zeros;
 - that each signed message is in the record whole, and that its signature recovers to the line's forecaster;
 - that each forecast was accepted before entries closed, and that the record closed after 00:05 UTC the next day.
 
@@ -73,8 +74,9 @@ git diff board.json
 
 `--refetch` asks Hyperliquid how each outcome settled and stops if any answer differs from `settlements.json`. To
 check the live board, add `--compare https://api.usehyperodds.com`. It reads every page of `GET /forecasts/board`
-and compares each answer byte for byte with the same page of the rebuilt board. It leaves out one field, `asOf`,
-the time the API computed its copy.
+and compares each answer byte for byte with the same page of the rebuilt board. When the two boards used different
+settlements, it reports their `settlementsRoot` values, since that difference explains every other one. It happens
+when a market settled after this copy last asked Hyperliquid: run `score` again and compare.
 
 ## How scoring works
 
@@ -105,8 +107,8 @@ A lower Brier score is better, and positive skill means the forecast beat that r
 `p = 6200`, `f = 5810` and `m = 6050`, and side 0 winning (`o = 10000`): B = 0.1444, Bf = 0.175561,
 Bm = 0.156025, skill over the fair line 0.031161 and skill over the market 0.011625.
 
-A forecaster's row on the board covers their counted forecasts: the latest one on each outcome, once the outcome
-has settled and the forecast's day has closed.
+A forecaster's row on the board covers their counted forecasts. On each outcome, that is their forecast with the
+highest `id` among those whose day has closed, once the outcome has settled.
 
 | Field | Meaning |
 |---|---|
@@ -119,6 +121,17 @@ has settled and the forecast's day has closed.
 A mean is the exact integer sum divided by its count, rounded half away from zero to 6 decimals, and null when
 the count is 0. Rows with `n` of 50 or more rank first, then early rows. Within each group, rows rank by
 `skillFair` (highest first, null last), then by `n` (highest first), then by address.
+
+The board also says what it was built from:
+
+| Field | Meaning |
+|---|---|
+| `asOf` | The newest record's `closedAt`. The board changes only when a record closes or a market settles. |
+| `through`, `records` | The newest day with a record, and how many records there are. |
+| `settled` | How many settlements the board used: one per outcome of a counted forecast that has settled. |
+| `settlementsRoot` | The SHA-256 of those settlements as lines `<outcome>:<settleFraction>\n`, sorted by outcome id, with `settleFraction` exactly as Hyperliquid answers it. |
+
+The same records and the same settlements always give the same board, byte for byte.
 
 ## The baselines
 
@@ -135,7 +148,8 @@ forecaster above zero beat Hyperodds' own estimate on the same markets, at the s
 
 ## Why a short record is labelled early
 
-Over a few dozen forecasts, luck and skill look alike. A 2-point edge needs about 350 resolved forecasts to show.
+Over a few dozen forecasts, luck and skill look alike. A small advantage takes a few hundred resolved forecasts to
+tell apart from luck.
 The board labels every record with fewer than 50 resolved forecasts as early, ranks it below the full records,
 and shows `n` beside every row.
 
