@@ -182,7 +182,18 @@ test("the board names its settlements: count and root over the counted outcomes"
   assert.equal(b.settled, 56);
   assert.equal(b.settled, used.length);
   assert.equal(b.settlementsRoot, createHash("sha256").update(text).digest("hex"));
-  assert.deepEqual(Object.keys(b), ["asOf", "through", "records", "settled", "settlementsRoot", "baselines", "total", "rows"]);
+  assert.deepEqual(Object.keys(b), [
+    "asOf",
+    "through",
+    "records",
+    "settled",
+    "settlementsRoot",
+    "baselines",
+    "total",
+    "resolved",
+    "established",
+    "rows",
+  ]);
 });
 
 test("a settlement no counted forecast uses, or an unreadable one, is not in the root", async () => {
@@ -200,6 +211,15 @@ test("the root is over settleFraction exactly as Hyperliquid answers it", async 
   const c = board(days, respelled);
   assert.deepEqual(c.rows, b.rows);
   assert.notEqual(c.settlementsRoot, b.settlementsRoot);
+});
+
+test("resolved and established total every row", async () => {
+  const { days, settlements } = await fixture();
+  const b = board(days, settlements);
+  assert.equal(b.resolved, b.rows.reduce((n, r) => n + r.n, 0));
+  assert.equal(b.resolved, 82);
+  assert.equal(b.established, 1);
+  assert.equal(b.established, b.rows.filter((r) => !r.early).length);
 });
 
 test("asOf is the newest record's closedAt", async () => {
@@ -220,6 +240,8 @@ test("an empty record gives an empty board", () => {
       { key: "market", label: "Market price", n: 0, brier: null, nFair: 0, skillFair: null, nMarket: 0, skillMarket: null },
     ],
     total: 0,
+    resolved: 0,
+    established: 0,
     rows: [],
   });
 });

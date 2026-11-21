@@ -171,6 +171,8 @@ export function board(days, settlements) {
     ...settlementsUsed(lines, settlements),
     baselines,
     total: rows.length,
+    resolved: rows.reduce((n, r) => n + r.n, 0),
+    established: rows.filter((r) => !r.early).length,
     rows,
   };
 }
