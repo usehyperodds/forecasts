@@ -63,8 +63,9 @@ export function isDay(s) {
   return typeof s === "string" && DAY.test(s) && isIso(`${s}T00:00:00.000Z`);
 }
 
+/** A uint64 as a decimal string without leading zeros. */
 export function isUint64String(s) {
-  return typeof s === "string" && /^\d{1,20}$/.test(s) && BigInt(s) <= UINT64_MAX;
+  return typeof s === "string" && /^(0|[1-9]\d{0,19})$/.test(s) && BigInt(s) <= UINT64_MAX;
 }
 
 const isInt = (v, min, max) => Number.isSafeInteger(v) && v >= min && v <= max;
@@ -103,9 +104,10 @@ export function lineProblem(l) {
     return `type ${JSON.stringify(l.type)} is neither "Forecast" nor "ForecastBatch"`;
   }
   if (!isInt(l.time, 0, Number.MAX_SAFE_INTEGER)) return `time ${JSON.stringify(l.time)} is not Unix seconds`;
-  if (!isUint64String(l.nonce)) return `nonce ${JSON.stringify(l.nonce)} is not a uint64 decimal string`;
-  if (typeof l.signature !== "string" || !/^0x[0-9a-fA-F]{130}$/.test(l.signature))
-    return `signature is not 65 bytes of hex`;
+  if (!isUint64String(l.nonce))
+    return `nonce ${JSON.stringify(l.nonce)} is not a uint64 as a decimal string without leading zeros`;
+  if (typeof l.signature !== "string" || !/^0x[0-9a-f]{130}$/.test(l.signature))
+    return "signature is not 65 bytes of lowercase hex";
   return null;
 }
 

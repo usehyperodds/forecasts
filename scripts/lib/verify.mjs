@@ -207,7 +207,7 @@ function checkBatches(day, lines, seen) {
       if (twin) throw new RecordError(day, `batch ${batch} has outcome ${l.v.outcome} twice, here and on line ${twin.n}`, l.n);
       outcomes.set(l.v.outcome, l);
     }
-    const nonceKey = `${first.v.forecaster}:${BigInt(first.v.nonce)}`;
+    const nonceKey = `${first.v.forecaster}:${first.v.nonce}`;
     const reused = seen.nonces.get(nonceKey);
     if (reused !== undefined)
       throw new RecordError(day, `batch ${batch} reuses nonce ${first.v.nonce}, already signed by its forecaster in batch ${reused}`, at);

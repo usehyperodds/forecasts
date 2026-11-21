@@ -124,6 +124,16 @@ test("a fair note beside a fair line fails", async () => {
   assert.equal(e.message, '2026-11-22, line 1: fairBps is set, so fairNote must be null, not "no-line"');
 });
 
+test("a signature in uppercase hex fails the format", async () => {
+  const e = failure(await edited(editField(3, (l) => ({ ...l, signature: `0x${l.signature.slice(2).toUpperCase()}` }))));
+  assert.equal(e.message, "2026-11-22, line 4: signature is not 65 bytes of lowercase hex");
+});
+
+test("a nonce with a leading zero fails the format", async () => {
+  const e = failure(await edited(editField(3, (l) => ({ ...l, nonce: `0${l.nonce}` }))));
+  assert.match(e.message, /^2026-11-22, line 4: nonce "01763719200002" is not a uint64 as a decimal string without leading zeros$/);
+});
+
 test("an index that disagrees with a manifest fails", async () => {
   const store = await load("valid");
   const index = JSON.parse(store.index);
