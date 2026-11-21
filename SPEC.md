@@ -1,9 +1,9 @@
-# The Hyperodds forecast record: contract
+# The Hyperodds forecast record spec
 
 Everything below is fixed. The Hyperodds API, its MCP bridge (`hyperodds-mcp`), the open scorer and the console
-are built to it; a change here is a new version of the contract. The same text is published as `CONTRACT.md` in
-[usehyperodds/forecasts](https://github.com/usehyperodds/forecasts) and in Hyperodds' own specification, generated
-from one source, so the two never differ.
+are built to it; a change here is a new version of the spec. This text is published as `SPEC.md` in
+[usehyperodds/forecasts](https://github.com/usehyperodds/forecasts), generated from the specification Hyperodds
+builds to, so the two never differ.
 
 ## Units and names
 

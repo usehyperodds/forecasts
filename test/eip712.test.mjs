@@ -55,7 +55,7 @@ test("digests", () => {
   assert.equal(toHex(digest("ForecastBatch", batch)), "0x8628ebe750cec7b7704023cfeb8cbfde075fde486849a3ae9c8931fabc83c139");
 });
 
-test("the test key signs the contract's signatures", () => {
+test("the test key signs the spec's signatures", () => {
   assert.equal(sign(digest("Forecast", single), key(1)), SINGLE_SIG);
   assert.equal(sign(digest("ForecastBatch", batch), key(1)), BATCH_SIG);
 });

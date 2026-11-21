@@ -155,7 +155,7 @@ function checkLine(day, text, n, prev) {
   if (extra.length > 0) throw new RecordError(day, `has unexpected ${extra.map((k) => q(k)).join(", ")}`, n);
   const at = keys.findIndex((k, i) => k !== KEYS[i]);
   if (at >= 0)
-    throw new RecordError(day, `key ${at + 1} is ${q(keys[at])}; the contract puts ${q(KEYS[at])} there`, n);
+    throw new RecordError(day, `key ${at + 1} is ${q(keys[at])}; the spec puts ${q(KEYS[at])} there`, n);
   const problem = lineProblem(v);
   if (problem) throw new RecordError(day, problem, n);
   const canonical = formatLine(v);

@@ -33,7 +33,7 @@ export function mean(sum, count) {
   return Number(sum < 0n ? -q : q) / 1e6;
 }
 
-/** The scores of one forecast against its outcome, as the contract shows them. */
+/** The scores of one forecast against its outcome, as the spec shows them. */
 export function scoreForecast({ probabilityBps: p, fairBps: f, midBps: m }, o) {
   const b = brier(p, o);
   const bf = f === null ? null : brier(f, o);

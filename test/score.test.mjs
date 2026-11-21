@@ -18,7 +18,7 @@ async function fixture() {
   return { days, settlements, results };
 }
 
-test("the contract's scoring example", () => {
+test("the spec's scoring example", () => {
   assert.deepEqual(scoreForecast({ probabilityBps: 6200, fairBps: 5810, midBps: 6050 }, 10000), {
     brier: 0.1444,
     brierFair: 0.175561,
@@ -123,7 +123,7 @@ test("the scoring fixture rebuilds the known board", async () => {
   assert.equal(`${JSON.stringify(board(days, settlements), null, 2)}\n`, want);
 });
 
-test("the known board's rows follow the contract", async () => {
+test("the known board's rows follow the spec", async () => {
   const { days, settlements } = await fixture();
   const b = board(days, settlements);
   const row = (n) => b.rows.find((r) => r.forecaster === addressOf(key(n)));

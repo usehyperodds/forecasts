@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { formatLine, merkleRoot, sha256 } from "../scripts/lib/record.mjs";
 
-test("RFC 6962 roots: the contract's vectors", () => {
+test("RFC 6962 roots: the spec's vectors", () => {
   assert.equal(merkleRoot([]), "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
   assert.equal(merkleRoot(["a"]), "022a6979e6dab7aa5ae4c3e5e45f7e977112a7e63593820dbec1ec738a24f93c");
   assert.equal(merkleRoot(["a", "b"]), "b137985ff484fb600db93107c77b0365c80d78f5b429ded0fd97361d077999eb");
@@ -18,7 +18,7 @@ test("RFC 6962 roots split at the largest power of two below n", () => {
   assert.equal(merkleRoot(["€"]), leaf("€").toString("hex"));
 });
 
-test("a line has the contract's keys, in order, without spaces", () => {
+test("a line has the spec's keys, in order, without spaces", () => {
   const line =
     '{"id":101,"forecaster":"0x7e5f4552091a69125d5dfcb7b8c2659029395bdf","outcome":42400,"probabilityBps":6200,"acceptedAt":"2025-11-21T10:00:01.234Z","cutoff":"2025-11-22T06:00:00.000Z","fairBps":5810,"fairNote":null,"midBps":6050,"bookTime":"2025-11-21T10:00:00.950Z","batch":17,"index":0,"size":2,"type":"ForecastBatch","time":1763719200,"nonce":"1763719200001","signature":"0xf905…cd71b"}';
   const shuffled = Object.fromEntries(Object.entries(JSON.parse(line)).reverse());

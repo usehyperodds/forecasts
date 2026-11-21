@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-/** A record line's keys, in the order the contract fixes. */
+/** A record line's keys, in the order the spec fixes. */
 export const KEYS = [
   "id",
   "forecaster",

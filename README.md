@@ -9,7 +9,7 @@ every daily record and holds the code that checks them and rebuilds the board. W
 public data, you can recompute every forecaster's score yourself and compare it with the board on usehyperodds.com.
 
 The protocol, from the signed message types and test vectors to the endpoints, refusal codes, limits, record
-layout and scoring, is in [CONTRACT.md](CONTRACT.md): the same text Hyperodds builds to.
+layout and scoring, is in [SPEC.md](SPEC.md): the same text Hyperodds builds to.
 
 ## What is public, and when
 

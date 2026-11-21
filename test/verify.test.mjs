@@ -91,7 +91,7 @@ test("a bad signature fails", async () => {
 
 test("a reordered key fails", async () => {
   const e = failure(await load("reordered-key"));
-  assert.equal(e.message, '2026-10-22, line 4: key 3 is "probabilityBps"; the contract puts "outcome" there');
+  assert.equal(e.message, '2026-10-22, line 4: key 3 is "probabilityBps"; the spec puts "outcome" there');
 });
 
 test("an unsigned field changed under the published manifest fails the sha256", async () => {
