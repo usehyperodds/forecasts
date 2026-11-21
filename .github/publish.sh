@@ -6,7 +6,7 @@ kind=$1
 shift
 git add -- "$@"
 if git diff --cached --quiet; then
-  echo "no new $kind"
+  echo "$kind unchanged"
   exit 0
 fi
 if [ "$kind" = records ]; then

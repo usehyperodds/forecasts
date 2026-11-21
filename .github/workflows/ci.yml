@@ -21,7 +21,7 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm test
       - run: node scripts/verify.mjs
-      - name: board.json rebuilds from the records and settlements.json
+      - name: Check that board.json rebuilds unchanged
         run: |
           node scripts/score.mjs --offline
           git diff --exit-code board.json

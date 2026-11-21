@@ -2,7 +2,7 @@
   "name": "hyperodds-forecasts",
   "version": "1.0.0",
   "private": true,
-  "description": "Hyperodds' public forecast record, its verifier and its open scorer.",
+  "description": "Verify the Hyperodds forecast record and rebuild its board from Hyperliquid's settlements.",
   "license": "MIT",
   "type": "module",
   "engines": {
