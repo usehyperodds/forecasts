@@ -8,6 +8,9 @@ mid. The forecast stays private until the market's cutoff, then goes into a dail
 every daily record and holds the code that checks them and rebuilds the board. With a clone and Hyperliquid's
 public data, you can recompute every forecaster's score yourself and compare it with the board on usehyperodds.com.
 
+The protocol, from the signed message types and test vectors to the endpoints, refusal codes, limits, record
+layout and scoring, is in [CONTRACT.md](CONTRACT.md): the same text Hyperodds builds to.
+
 ## What is public, and when
 
 - A forecast is private until its market's cutoff: the event time Hyperodds reads from the market, such as a
