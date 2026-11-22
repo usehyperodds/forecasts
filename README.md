@@ -35,7 +35,7 @@ Each line of a record is one forecast:
 | `probabilityBps` | The probability that side 0 wins, in basis points. 6200 is 62.00%. |
 | `acceptedAt` | When Hyperodds accepted the forecast. |
 | `cutoff` | The market's cutoff, as recorded at acceptance. |
-| `fairBps`, `fairNote` | Hyperodds' fair line for side 0 at acceptance. When it is null, `fairNote` says why: `no-line` or `low-confidence`. |
+| `fairBps`, `fairNote` | Hyperodds' fair line for side 0 at acceptance. When it is null, `fairNote` says why: `no-line` (no current line) or `low-confidence` (under 0.5 confidence, or a single source). |
 | `midBps`, `bookTime` | The book's mid for side 0 at acceptance, and when that book last changed. Null when either side of the book was empty or its spread was wider than 10 points. |
 | `batch`, `index`, `size`, `type` | The signed message the forecast came in, its position in it and how many forecasts it held. |
 | `time`, `nonce`, `signature` | The rest of the signed message, and its signature. |
