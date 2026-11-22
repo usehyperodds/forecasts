@@ -18,6 +18,7 @@ This is **version 2**, from 2026-11-22, made before any daily record had closed.
 - **Sign links**: entries carry `kind`, `starts`, `settlesAt` and `settlesBy`; a draft is signed once, and only by a
   batch of its own entries.
 - **MCP**: no argument is ignored.
+- **Shared addresses**: an AI connector's shared range is limited by forecaster, not by address.
 
 Signed messages and the EIP-712 domain are unchanged (its `version` stays `"1"`), as are the record's layout and its
 hashes.
@@ -207,7 +208,9 @@ Limits, all per UTC day or per rolling window as named:
 | Reads (`GET`), per IP address | 10 a second, in bursts of 60 |
 | Body | 64 KB |
 
-A refused or unreadable body still counts toward its IP address's limit on submissions and drafts.
+A refused or unreadable body still counts toward its IP address's limit on submissions and drafts. An address in a
+range Hyperodds lists as shared by an AI connector, which many people's agents send from, is limited by forecaster
+instead: the limits and caps per IP address don't apply to it, and those per forecaster and on all clients do.
 
 ### `POST /forecasts`: record a signed forecast or batch
 
