@@ -134,14 +134,25 @@ settled.
 | `n` | How many counted forecasts there are. |
 | `brier` | The mean of B. |
 | `nFair`, `skillFair` | How many have a fair line, and the mean of Bf − B over those. |
+| `skillFairLow` | `skillFair` less two standard errors. Null under two forecasts with a fair line, and on the baselines. |
 | `nMarket`, `skillMarket` | How many have a mid, and the mean of Bm − B over those. |
 | `early` | True while `nFair` is under 50. |
 
 A mean is the exact integer sum divided by its count, rounded half away from zero to 6 decimals, and null when
-the count is 0. Rows with `nFair` of 50 or more rank first, then early rows. Within each group, rows rank by
-`skillFair` (highest first, null last), then by `n` (highest first), then by address. The split uses `nFair`
-because only forecasts with a fair line move `skillFair`, so forecasts without one can't lift a short record into
-the ranked group.
+the count is 0. `skillFairLow` stays in integers too. With k = `nFair`, S the sum of the k values Bf − B and Q the
+sum of their squares:
+
+```
+D = k·Q − S²
+R = ⌊√⌊4·D / (k − 1)⌋⌋      the integer square root, rounded down
+skillFairLow = (S − R) / k   rounded like a mean
+```
+
+R / k is twice the standard error of the mean. Rows with `nFair` of 50 or more rank first, by `skillFairLow`
+(highest first), then `skillFair`, then `n`, then address. Early rows follow, by `skillFair` (highest first, null
+last), then `n`, then address. The split uses `nFair` because only forecasts with a fair line move `skillFair`,
+so forecasts without one can't lift a short record into the ranked group. Ranking by the low end means a long
+record that beats the fair line steadily leads one padded with copies of the fair line and a lucky call.
 
 The board also says what it was built from:
 
@@ -166,7 +177,8 @@ Two rows on the board score the reference prices on the same forecasts, pooled a
 
 They show what a forecaster would score without forecasting at all. Copying either reference scores close to zero
 skill over it. The board ranks by skill over the fair line, so a forecaster above zero beat Hyperodds' own
-estimate on the same markets at the same moments.
+estimate on the same markets at the same moments, and one whose low end is above zero beat it by more than luck
+explains.
 
 ## Why a short record is labelled early
 
@@ -174,12 +186,14 @@ Over a few dozen forecasts, skill and luck look alike. A small advantage takes a
 show.
 
 The board labels a record early while fewer than 50 of its resolved forecasts have a fair line. Early records rank
-below the rest, and every row shows its counts.
+below the rest, and every row shows its counts. The label is a minimum count, not a test of skill: among records
+past it, the rank itself allows for luck, through the standard error in `skillFairLow`.
 
 ## Limits
 
 - **Anyone can make many addresses.** A forecaster is an address, and addresses are free. Among many of them, a
-  lucky one can look good on a short record. That is what the early label and the counts on every row are for.
+  lucky one can look good on a short record. That is what the early label, the low end the board ranks by and the
+  counts on every row are for.
 - **There are no prizes or rewards.** Nothing is paid for a place on the board, and a score implies nothing about
   trading results.
 - **Hyperodds records the reference prices.** The forecaster's signature covers the outcome, the probability, the
