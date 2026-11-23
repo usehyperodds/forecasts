@@ -9,8 +9,10 @@ This is **version 2**, from 2026-11-22, made before any daily record had closed.
 
 - **Rank**: rows with 50 or more forecasts carrying a fair line rank by `skillFairLow`, their mean skill over the
   fair line less two standard errors, and every row carries it (Scoring).
-- **Resubmission**: the same signed message sent again answers `200` with its first answer, not `replayed`.
-- **Caps**: 500 forecasts per IP address per cutoff day (`ip_day_cap`); a cutoff day holds 500,000, not 200,000.
+- **Resubmission**: the same signed message sent again answers `200` with its first answer; version 1 refused it
+  as `replayed`.
+- **Caps**: 500 forecasts per IP address per cutoff day (`ip_day_cap`); a cutoff day holds 500,000 (it held
+  200,000).
 - **Cutoff**: a game's or a decision's cutoff takes a matched Polymarket kickoff when that comes first.
 - **Fair line**: `no-line` and `low-confidence` also cover a line not recomputed in the last minute, a placeholder
   at 0 or 1, and a line resting on a single source.
@@ -18,7 +20,7 @@ This is **version 2**, from 2026-11-22, made before any daily record had closed.
 - **Sign links**: entries carry `kind`, `starts`, `settlesAt` and `settlesBy`; a draft is signed once, and only by a
   batch of its own entries.
 - **MCP**: no argument is ignored.
-- **Shared addresses**: an AI connector's shared range is limited by forecaster, not by address.
+- **Shared addresses**: an AI connector's shared range has no per-address limits; each forecaster's own apply.
 
 Signed messages and the EIP-712 domain are unchanged (its `version` stays `"1"`), as are the record's layout and its
 hashes.
@@ -517,10 +519,12 @@ signs it there, or sign `typedData` locally and call again with `signed`. A refu
 object covering all three statuses, so a client that checks structured content against it, as the official MCP
 SDK's `Client.callTool` does, gets a refusal back as a result. No argument is ignored: an argument `odds_forecast`
 doesn't take, a key `signed` or an entry doesn't have, and `signed` given with `forecasts` or `forecaster` are all
-refused as `invalid_request`, the sentence naming what was wrong. Only arguments of the wrong JSON type (a string
-for `forecasts`, say), and on the read tools an argument they don't take or `limit` or `offset` out of range, are
-refused by the MCP layer itself, as a tool error `Input validation error: …` with no `structuredContent`. The read
-tools never refuse with a code: an error there is a tool error with text only.
+refused as `invalid_request`, the sentence naming what was wrong. The read tools refuse an argument they don't take
+by name (`odds_leaderboard takes limit and offset, not page.`), and `odds_forecast_record` an address that isn't
+one with the same sentence as HTTP. Only arguments of the wrong JSON type (a string for `forecasts`, say), and
+`limit` or `offset` out of range on the read tools, are refused by the MCP layer itself, as a tool error
+`Input validation error: …`. The read tools never refuse with a code: an error there is a tool error with text
+only, without `structuredContent`.
 
 **`odds_forecast_record`**: read-only. Input `{ address, limit?: 1..100 (default 20), offset?, draft? }`. Answers
 the `GET /forecasts/address/<address>` body. An address with no forecast at all, which HTTP answers 404, answers
