@@ -3,6 +3,26 @@
 Everything below is fixed. The Hyperodds API, its MCP bridge (`hyperodds-mcp`), the open scorer and the console
 are built to it; a change here is a new version of the spec.
 
+## Version
+
+This is **version 2**, from 2026-11-22, made before any daily record had closed. From version 1 it changes:
+
+- **Rank**: rows with 50 or more forecasts carrying a fair line rank by `skillFairLow`, their mean skill over the
+  fair line less two standard errors, and every row carries it (Scoring).
+- **Resubmission**: the same signed message sent again answers `200` with its first answer, not `replayed`.
+- **Caps**: 500 forecasts per IP address per cutoff day (`ip_day_cap`); a cutoff day holds 500,000, not 200,000.
+- **Cutoff**: a game's or a decision's cutoff takes a matched Polymarket kickoff when that comes first.
+- **Fair line**: `no-line` and `low-confidence` also cover a line not recomputed in the last minute, a placeholder
+  at 0 or 1, and a line resting on a single source.
+- **Settlements**: `settleFraction` reads only as the open scorer reads it, and is always Hyperliquid's own string.
+- **Sign links**: entries carry `kind`, `starts`, `settlesAt` and `settlesBy`; a draft is signed once, and only by a
+  batch of its own entries.
+- **MCP**: no argument is ignored.
+- **Shared addresses**: an AI connector's shared range is limited by forecaster, not by address.
+
+Signed messages and the EIP-712 domain are unchanged (its `version` stays `"1"`), as are the record's layout and its
+hashes.
+
 ## Units and names
 
 - **Outcome**: a HIP-4 outcome id (`outcome` in Hyperliquid's `outcomeMeta`). Side 0 is the first entry of its
@@ -73,10 +93,12 @@ letter case (an all-capitals address signs as its lowercase form).
 
 ## Nonce, time and replay
 
-- `nonce` is a uint64 the signer picks. Each `(forecaster, nonce)` is accepted once, ever; a second submission with
-  a used nonce is refused as `replayed`, whatever it contains. A random 63-bit integer, or the time in milliseconds
-  for a signer that never sends two in the same millisecond, both work. JSON carries it as a decimal string
-  (`"1763719200000"`); a JSON integer up to 2^53 − 1 is accepted too.
+- `nonce` is a uint64 the signer picks. Each `(forecaster, nonce)` is recorded once, ever. The same signed message
+  sent again (same `type`, `forecaster`, entries, `time` and `nonce`, inside the time window) records nothing and
+  answers `200` with the answer it got the first time, whatever has closed or been signed since, so a client
+  whose answer was lost can retry; any other submission with a used nonce is refused as `replayed`. A random
+  63-bit integer, or the time in milliseconds for a signer that never sends two in the same millisecond, both
+  work. JSON carries it as a decimal string (`"1763719200000"`); a JSON integer up to 2^53 − 1 is accepted too.
 - `time` must be within 600 seconds before and 120 seconds after the server's clock at the moment it records the
   forecast (`acceptedAt`), or it is refused as `stale_time`. Every recorded line therefore has
   `floor(acceptedAt / 1000) − 600 ≤ time ≤ floor(acceptedAt / 1000) + 120`. `time` also decides which of a
@@ -89,7 +111,9 @@ letter case (an all-capitals address signs as its lowercase form).
 ## Cutoff
 
 - A market's **cutoff** is its event time: a game's start, a price market's price time, a decision's time, as
-  Hyperodds reads it from the HIP-4 template (`eventTime` in the API's market views).
+  Hyperodds reads it from the HIP-4 template (`eventTime` in the API's market views). For a game or a decision,
+  when a Polymarket market Hyperodds grades as the same event starts earlier, the cutoff is that earlier kickoff:
+  a deployer's start can't keep entries open after the event has begun.
 - A forecast is accepted only if, when the server receives it, the outcome is listed in Hyperliquid's
   `outcomeMeta` (not settled, not removed), is not a question's fallback outcome, has an event time, is not a touch
   market (those settle whenever the price touches, so they have no fixed cutoff), and the server's clock is before
@@ -131,7 +155,7 @@ At acceptance the server records, from its own live state at that moment:
 | Field | Meaning |
 |---|---|
 | `fairBps` | Hyperodds' fair line for side 0, in basis points (0 to 10000, rounded), or null |
-| `fairNote` | Why `fairBps` is null: `no-line` (Hyperodds has no line for the market) or `low-confidence` (the line's confidence is under 0.5). Null when `fairBps` is set |
+| `fairNote` | Why `fairBps` is null: `no-line` (Hyperodds has no current line for the market: none, one at exactly 0 or 1, or one not recomputed in the last 60 seconds) or `low-confidence` (the line's confidence is under 0.5, or it rests on a single source, as `singleSource` says in the API). Null when `fairBps` is set |
 | `midBps` | The book's mid for side 0 (halfway between best bid and best ask), in basis points (0 to 10000, rounded), or null when either side of the book is empty or the spread is wider than 10 points: a mid between a 1¢ bid and a 99¢ ask is no price anyone trades at |
 | `bookTime` | When that book was last updated, or null with `midBps` |
 
@@ -163,7 +187,8 @@ application/json`) except the daily records. Every refusal is:
 | 429 | `rate_limited` | over a rate limit below; `retry-after` says when to try again |
 | 429 | `daily_cap` | the forecaster has 1,000 forecasts accepted today (UTC); `retry-after` points at 00:00 UTC |
 | 429 | `ip_daily_cap` | 2,000 forecasts were accepted from this IP address today (UTC); `retry-after` points at 00:00 UTC |
-| 429 | `day_full` | 200,000 forecasts are recorded with cutoffs on that UTC day; no `retry-after`, the day takes no more |
+| 429 | `ip_day_cap` | this IP address has 500 forecasts recorded with cutoffs on that UTC day, whichever days it sent them on; no `retry-after` |
+| 429 | `day_full` | 500,000 forecasts are recorded with cutoffs on that UTC day; no `retry-after`, the day takes no more |
 | 500 | `internal` | `Something went wrong on our side. Try again in a minute.` |
 | 503 | `loading` | markets are still loading after a restart |
 
@@ -175,14 +200,17 @@ Limits, all per UTC day or per rolling window as named:
 | Submissions, per forecaster | 10 a minute, in bursts of 10 |
 | Accepted forecasts, per forecaster | 1,000 a UTC day (`daily_cap`) |
 | Accepted forecasts, per IP address | 2,000 a UTC day (`ip_daily_cap`) |
-| Recorded forecasts, per cutoff day, all forecasters | 200,000 (`day_full`) |
+| Recorded forecasts, per IP address, per cutoff day | 500 (`ip_day_cap`) |
+| Recorded forecasts, per cutoff day, all forecasters | 500,000 (`day_full`) |
 | Drafts, per IP address | 600 an hour |
 | Drafts naming a forecaster, per forecaster | 60 an hour |
 | Drafts, all clients | 20,000 an hour |
 | Reads (`GET`), per IP address | 10 a second, in bursts of 60 |
 | Body | 64 KB |
 
-A refused or unreadable body still counts toward its IP address's limit on submissions and drafts.
+A refused or unreadable body still counts toward its IP address's limit on submissions and drafts. An address in a
+range Hyperodds lists as shared by an AI connector, which many people's agents send from, is limited by forecaster
+instead: the limits and caps per IP address don't apply to it, and those per forecaster and on all clients do.
 
 ### `POST /forecasts`: record a signed forecast or batch
 
@@ -204,7 +232,8 @@ A refused or unreadable body still counts toward its IP address's limit on submi
 ```
 
 For one forecast, `type` is `"Forecast"` and `message` is
-`{ "forecaster", "outcome", "probabilityBps", "time", "nonce" }`. Answer `201`:
+`{ "forecaster", "outcome", "probabilityBps", "time", "nonce" }`. Answer `201` (`200` for a message recorded
+before, with the same body as then):
 
 ```json
 {
@@ -244,8 +273,10 @@ that would be refused is refused now. The close is checked again when the wallet
 have passed their close by then is refused as `past_close`, and the page asks for a new draft. Without
 `forecaster`, any wallet can sign the link. With `forecaster`, only that wallet can, and the answer also carries
 `typedData`, ready for a local signer to sign as is (its `time` is now and its `nonce` random). The draft keeps that
-nonce: it reads `signed` as soon as that forecaster's forecast with that nonce is accepted, whether or not the
-submission names the draft. Anyone holding an open link sees its drafted probabilities. Answer `201`:
+nonce: it reads `signed` as soon as that forecaster's forecasts with that nonce and the draft's own entries are
+accepted, whether or not the submission names the draft; a batch that reuses the nonce with other entries leaves the
+draft open. A draft is signed once: of two submissions naming it, the one recorded second is refused as
+`draft_expired`. Anyone holding an open link sees its drafted probabilities. Answer `201`:
 
 ```json
 {
@@ -255,11 +286,15 @@ submission names the draft. Anyone holding an open link sees its drafted probabi
   "forecaster": null,
   "day": "2025-11-22",
   "forecasts": [
-    { "outcome": 42400, "probabilityBps": 6200, "title": "BTC above 55,765 on Nov 22 at 06:00 UTC", "sides": ["Yes", "No"], "cutoff": "2025-11-22T06:00:00.000Z", "closesAt": "2025-11-22T05:00:00.000Z" }
+    { "outcome": 42400, "probabilityBps": 6200, "title": "BTC above 55,765 on Nov 22 at 06:00 UTC", "sides": ["Yes", "No"], "cutoff": "2025-11-22T06:00:00.000Z", "closesAt": "2025-11-22T05:00:00.000Z", "kind": "price_binary", "starts": null, "settlesAt": "2025-11-22T06:00:00.000Z", "settlesBy": null }
   ],
   "typedData": null
 }
 ```
+
+`kind`, `starts`, `settlesAt` and `settlesBy` time the market as the console does: a price market settles at
+`settlesAt`; a game starts (a decision is made) at `starts`, its cutoff, and settles by `settlesBy`. `title` and
+`sides` are the deployer's text on one line, as data.
 
 `typedData`, when present, is `{ "domain", "types", "primaryType", "message" }` with `nonce` as a decimal string;
 send its `message` back unchanged as the submission's `message`.
@@ -270,7 +305,9 @@ send its `message` back unchanged as the submission's `message`.
 "signer", "recorded", "serverTime" }`.
 
 - `forecasts` is the draft's entries while it is open and `[]` once it is signed or expired (they are pending
-  forecasts by then). Each entry's `closesAt` is its close as above, recorded cutoffs on that outcome included.
+  forecasts by then). Each entry's `closesAt` is its close as above, recorded cutoffs on that outcome included. An
+  entry whose market is no longer listed has `cutoff` and `closesAt` `""`, null times and the sides
+  `["First side", "Second side"]`: it can't be signed.
 - `batch` is the recorded batch id once signed, else null; `signer` the address that signed it, else null.
 - `recorded`, once signed, is what Hyperodds saw for each market when the forecasts arrived, without the
   probabilities: `[{ "outcome", "title", "sides", "cutoff", "fairBps", "fairNote", "midBps" }]` in the signed
@@ -291,14 +328,14 @@ send its `message` back unchanged as the submission's `message`.
   "settled": 131,
   "settlementsRoot": "5f0c…e2a1",
   "baselines": [
-    { "key": "fair", "label": "Hyperodds fair line", "n": 120, "brier": 0.189302, "nFair": 120, "skillFair": 0, "nMarket": 118, "skillMarket": 0.004211 },
-    { "key": "market", "label": "Market price", "n": 131, "brier": 0.185514, "nFair": 118, "skillFair": -0.004211, "nMarket": 131, "skillMarket": 0 }
+    { "key": "fair", "label": "Hyperodds fair line", "n": 120, "brier": 0.189302, "nFair": 120, "skillFair": 0, "skillFairLow": null, "nMarket": 118, "skillMarket": 0.004211 },
+    { "key": "market", "label": "Market price", "n": 131, "brier": 0.185514, "nFair": 118, "skillFair": -0.004211, "skillFairLow": null, "nMarket": 131, "skillMarket": 0 }
   ],
   "total": 4,
   "resolved": 214,
   "established": 1,
   "rows": [
-    { "rank": 1, "forecaster": "0x…", "n": 61, "brier": 0.170112, "nFair": 58, "skillFair": 0.012009, "nMarket": 61, "skillMarket": 0.003961, "early": false }
+    { "rank": 1, "forecaster": "0x…", "n": 61, "brier": 0.170112, "nFair": 58, "skillFair": 0.012009, "skillFairLow": 0.001874, "nMarket": 61, "skillMarket": 0.003961, "early": false }
   ]
 }
 ```
@@ -320,7 +357,7 @@ send its `message` back unchanged as the submission's `message`.
 ```json
 {
   "forecaster": "0x…",
-  "summary": { "rank": 3, "n": 12, "brier": 0.2011, "nFair": 12, "skillFair": -0.0042, "nMarket": 12, "skillMarket": 0.0018, "early": true },
+  "summary": { "rank": 3, "n": 12, "brier": 0.2011, "nFair": 12, "skillFair": -0.0042, "skillFairLow": -0.0391, "nMarket": 12, "skillMarket": 0.0018, "early": true },
   "pending": 4,
   "pendingMarkets": 3,
   "total": 15,
@@ -398,10 +435,13 @@ curl -s https://api.hyperliquid.xyz/info -H 'content-type: application/json' \
 
 The field is **`settleFraction`**: a decimal string, the share of $1 that side 0 paid at settlement. `"1.0"`: side 0
 won; `"0.0"`: side 1 won; a standalone outcome can settle in between (a draw at `"0.5"`). The answer is `null` while
-the outcome is unsettled. Hyperodds reads the same value as each market settles; a question outcome settled to 0
-through the question's `settledNamedOutcomes` has `settleFraction` `"0.0"`.
+the outcome is unsettled. Hyperodds keeps the string `settledOutcome` answers, never one it writes itself: a
+settlement it sees only as a side (a question outcome settled to 0 through the question's `settledNamedOutcomes`,
+say) waits until it has asked `settledOutcome`.
 
 `outcomeBps` = `settleFraction` × 10000, rounded half away from zero, computed on the decimal string (no floats).
+Only `0` or `1` with up to 18 decimals, and a value of at most 1, reads; anything else (spaces, `"1."`, `"01.0"`,
+`"1.00004"`) leaves the outcome unsettled.
 
 ## Scoring
 
@@ -424,25 +464,34 @@ board has a row for every forecaster with at least one.
 | `n` | how many there are |
 | `brier` | mean of B |
 | `nFair`, `skillFair` | how many have f, and the mean of `Bf − B` over those |
+| `skillFairLow` | `skillFair` less two standard errors, as below; null when `nFair` is under 2 |
 | `nMarket`, `skillMarket` | how many have m, and the mean of `Bm − B` over those |
-| `early` | `nFair < 50`; a small advantage takes a few hundred resolved forecasts to tell apart from luck |
+| `early` | `nFair < 50`: a minimum count, not a test of skill |
 
 A mean is the exact sum divided by its count, rounded half away from zero to 6 decimals; it is null when its count
 is 0.
+
+`skillFairLow` is computed in integers too. With k = `nFair`, S the sum of the k values `Bf − B` and Q the sum of
+their squares (all in 10⁻⁸ units), D = k·Q − S² and R = ⌊√⌊4·D / (k − 1)⌋⌋, the integer square root rounded down;
+`skillFairLow` is (S − R) / k, rounded as a mean is. R / k is twice the standard error of the mean, from the sample
+variance D / (k·(k − 1)). Forty forecasts that beat the fair line by luck carry a wide error, so their low end sits
+well below a long record's.
 
 Two **baseline rows** score the reference prices on the same forecasts, pooled across every forecaster:
 
 | `key` | `label` | Pools | Fields |
 |---|---|---|---|
-| `fair` | Hyperodds fair line | every counted, resolved, recorded forecast that has f | `n` = `nFair` = that count, `brier` the mean of Bf, `skillFair` 0, `nMarket`/`skillMarket` the mean of `Bm − Bf` over those that also have m |
-| `market` | Market price | every counted, resolved, recorded forecast that has m | `n` = `nMarket` = that count, `brier` the mean of Bm, `skillMarket` 0, `nFair`/`skillFair` the mean of `Bf − Bm` over those that also have f |
+| `fair` | Hyperodds fair line | every counted, resolved, recorded forecast that has f | `n` = `nFair` = that count, `brier` the mean of Bf, `skillFair` 0, `skillFairLow` null, `nMarket`/`skillMarket` the mean of `Bm − Bf` over those that also have m |
+| `market` | Market price | every counted, resolved, recorded forecast that has m | `n` = `nMarket` = that count, `brier` the mean of Bm, `skillMarket` 0, `skillFairLow` null, `nFair`/`skillFair` the mean of `Bf − Bm` over those that also have f |
 
 An agent that copies the book scores close to zero skill over the market.
 
-**Rank**: rows with `nFair` of 50 or more first, then early rows; within each group by `skillFair` (highest first,
-null last), then `n` (highest first), then `forecaster` (ascending). `rank` counts from 1 across both groups. The
-baseline rows have no rank. The groups split on `nFair` because forecasts without a fair line add nothing to
-`skillFair`: counting them would let them lift a short fair-line record into the first group.
+**Rank**: rows with `nFair` of 50 or more first, by `skillFairLow` (highest first), then `skillFair`, then `n`
+(highest first), then `forecaster` (ascending). Early rows follow, by `skillFair` (highest first, null last), then
+`n`, then `forecaster`. `rank` counts from 1 across both groups. The baseline rows have no rank. The groups split on
+`nFair` because forecasts without a fair line add nothing to `skillFair`: counting them would let them lift a short
+fair-line record into the first group. Within the first group the low end decides, so fifty forecasts that copy the
+fair line plus one lucky one can't lead a record that beats it steadily.
 
 ## MCP
 
@@ -466,10 +515,12 @@ signs it there, or sign `typedData` locally and call again with `signed`. A refu
 `{ "status": "refused", "code", "entries" }`: the same codes as HTTP, `batch_size` for 51 entries included, and
 `entries` as HTTP gives them, `[]` when the refusal is about the whole request. The tool's output schema is one
 object covering all three statuses, so a client that checks structured content against it, as the official MCP
-SDK's `Client.callTool` does, gets a refusal back as a result. Only arguments of the wrong JSON type (a string for
-`forecasts`, say), and `limit` or `offset` out of range on the read tools, are refused by the MCP layer itself, as
-a tool error `Input validation error: …` with no `structuredContent`. The read tools never refuse with a code: an
-error there is a tool error with text only.
+SDK's `Client.callTool` does, gets a refusal back as a result. No argument is ignored: an argument `odds_forecast`
+doesn't take, a key `signed` or an entry doesn't have, and `signed` given with `forecasts` or `forecaster` are all
+refused as `invalid_request`, the sentence naming what was wrong. Only arguments of the wrong JSON type (a string
+for `forecasts`, say), and on the read tools an argument they don't take or `limit` or `offset` out of range, are
+refused by the MCP layer itself, as a tool error `Input validation error: …` with no `structuredContent`. The read
+tools never refuse with a code: an error there is a tool error with text only.
 
 **`odds_forecast_record`**: read-only. Input `{ address, limit?: 1..100 (default 20), offset?, draft? }`. Answers
 the `GET /forecasts/address/<address>` body. An address with no forecast at all, which HTTP answers 404, answers

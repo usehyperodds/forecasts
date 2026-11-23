@@ -12,6 +12,7 @@
       "brier": 0.321995,
       "nFair": 73,
       "skillFair": 0,
+      "skillFairLow": null,
       "nMarket": 68,
       "skillMarket": -0.033008
     },
@@ -22,6 +23,7 @@
       "brier": 0.288434,
       "nFair": 68,
       "skillFair": 0.033008,
+      "skillFairLow": null,
       "nMarket": 77,
       "skillMarket": 0
     }
@@ -37,6 +39,7 @@
       "brier": 0.3439,
       "nFair": 51,
       "skillFair": -0.046356,
+      "skillFairLow": -0.151257,
       "nMarket": 52,
       "skillMarket": -0.068449,
       "early": false
@@ -48,6 +51,7 @@
       "brier": 0.292708,
       "nFair": 3,
       "skillFair": 0.08712,
+      "skillFairLow": -0.077574,
       "nMarket": 3,
       "skillMarket": -0.020143,
       "early": true
@@ -59,6 +63,7 @@
       "brier": 0.292708,
       "nFair": 3,
       "skillFair": 0.08712,
+      "skillFairLow": -0.077574,
       "nMarket": 3,
       "skillMarket": -0.020143,
       "early": true
@@ -70,6 +75,7 @@
       "brier": 0.403794,
       "nFair": 10,
       "skillFair": 0,
+      "skillFairLow": 0,
       "nMarket": 10,
       "skillMarket": -0.139542,
       "early": true
@@ -81,6 +87,7 @@
       "brier": 0.386577,
       "nFair": 6,
       "skillFair": -0.096934,
+      "skillFairLow": -0.477197,
       "nMarket": 5,
       "skillMarket": -0.103413,
       "early": true
@@ -92,6 +99,7 @@
       "brier": 0.309885,
       "nFair": 0,
       "skillFair": null,
+      "skillFairLow": null,
       "nMarket": 4,
       "skillMarket": -0.028617,
       "early": true

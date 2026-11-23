@@ -4,7 +4,17 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
-import { board, countedLines, mean, outcomeBps, outcomesToAsk, scoreBoard, scoreForecast } from "../scripts/lib/score.mjs";
+import {
+  board,
+  countedLines,
+  isqrt,
+  lowerBound,
+  mean,
+  outcomeBps,
+  outcomesToAsk,
+  scoreBoard,
+  scoreForecast,
+} from "../scripts/lib/score.mjs";
 import { loadRecords, verifyRecords } from "../scripts/lib/verify.mjs";
 import { addressOf, key } from "./keys.mjs";
 
@@ -115,6 +125,34 @@ test("49 forecasts without a fair line and one lucky one with it stay early, bel
   assert.deepEqual([lucky.n, lucky.nFair, lucky.early, lucky.rank], [50, 1, true, 2]);
   assert.deepEqual([steady.n, steady.nFair, steady.early, steady.rank], [50, 50, false, 1]);
   assert.ok(lucky.skillFair > steady.skillFair);
+});
+
+test("established records rank by skill less two standard errors: a steady edge beats copies padded with luck", () => {
+  const lines = [];
+  for (let o = 1; o <= 60; o++) lines.push(line("0xsteady", o, 5100, { fair: 5000 }));
+  for (let o = 1; o <= 50; o++) lines.push(line("0xcopy", o, 5000, { fair: 5000 }));
+  lines.push(line("0xcopy", 51, 9999, { fair: 100 }));
+  const results = new Map(Array.from({ length: 60 }, (_, i) => [i + 1, 10000]));
+  const { rows } = scoreBoard(lines, results);
+  const steady = rows.find((r) => r.forecaster === "0xsteady");
+  const copy = rows.find((r) => r.forecaster === "0xcopy");
+  assert.deepEqual([steady.rank, steady.skillFair, steady.skillFairLow, steady.early], [1, 0.0099, 0.0099, false]);
+  assert.deepEqual([copy.rank, copy.skillFair, copy.early], [2, 0.019218, false]);
+  assert.ok(copy.skillFairLow < 0);
+});
+
+test("skillFairLow is the mean less two standard errors, in integers", () => {
+  // Skills 0.12 and 0.24: S = 36e6, Q = 720e12, D = 2Q − S² = 144e12, ⌊√(4D)⌋ = 24e6, (S − 24e6) / 2 = 0.06.
+  assert.equal(lowerBound(36_000_000n, 720_000_000_000_000n, 2), 0.06);
+  assert.equal(lowerBound(5n, 25n, 1), null);
+  assert.equal(lowerBound(3_000_000n, 3_000_000_000_000n, 3), 0.01);
+  for (const x of [0n, 1n, 2n, 3n, 4n, 15n, 16n, 17n, 99n, 100n, 101n]) assert.equal(isqrt(x), BigInt(Math.floor(Math.sqrt(Number(x)))));
+  for (const r of [12_345_678_901n, 2n ** 64n + 13n, 10n ** 30n + 7n]) {
+    assert.equal(isqrt(r * r), r);
+    assert.equal(isqrt(r * r - 1n), r - 1n);
+    assert.equal(isqrt(r * r + 2n * r), r);
+  }
+  assert.throws(() => isqrt(-1n));
 });
 
 test("the scoring fixture rebuilds the known board", async () => {
@@ -236,8 +274,8 @@ test("an empty record gives an empty board", () => {
     settled: 0,
     settlementsRoot: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     baselines: [
-      { key: "fair", label: "Hyperodds fair line", n: 0, brier: null, nFair: 0, skillFair: null, nMarket: 0, skillMarket: null },
-      { key: "market", label: "Market price", n: 0, brier: null, nFair: 0, skillFair: null, nMarket: 0, skillMarket: null },
+      { key: "fair", label: "Hyperodds fair line", n: 0, brier: null, nFair: 0, skillFair: null, skillFairLow: null, nMarket: 0, skillMarket: null },
+      { key: "market", label: "Market price", n: 0, brier: null, nFair: 0, skillFair: null, skillFairLow: null, nMarket: 0, skillMarket: null },
     ],
     total: 0,
     resolved: 0,

@@ -58,8 +58,36 @@ export function countedLines(lines) {
   return [...latest.values()];
 }
 
+/** ⌊√x⌋ for a BigInt x ≥ 0, exact. */
+export function isqrt(x) {
+  if (x < 0n) throw new RangeError("isqrt of a negative number");
+  if (x < 2n) return x;
+  let r = 1n << BigInt((x.toString(2).length + 1) >> 1);
+  for (;;) {
+    const next = (r + x / r) >> 1n;
+    if (next >= r) return r;
+    r = next;
+  }
+}
+
+/**
+ * The mean less two standard errors of `count` values in 10⁻⁸ units, from their sum S and sum of
+ * squares Q: (S − ⌊√⌊4·(k·Q − S²) / (k − 1)⌋⌋) / k, rounded as a mean. Null under 2 values.
+ */
+export function lowerBound(sum, squares, count) {
+  if (count < 2) return null;
+  const k = BigInt(count);
+  return mean(sum - isqrt((4n * (k * squares - sum * sum)) / (k - 1n)), count);
+}
+
 function tally() {
-  return { n: 0, sum: 0n, nFair: 0, fair: 0n, nMarket: 0, market: 0n };
+  return { n: 0, sum: 0n, nFair: 0, fair: 0n, fairSquares: 0n, nMarket: 0, market: 0n };
+}
+
+function addFair(t, skill) {
+  t.nFair++;
+  t.fair += skill;
+  t.fairSquares += skill * skill;
 }
 
 function stats(t) {
@@ -68,25 +96,34 @@ function stats(t) {
     brier: mean(t.sum, t.n),
     nFair: t.nFair,
     skillFair: mean(t.fair, t.nFair),
+    skillFairLow: lowerBound(t.fair, t.fairSquares, t.nFair),
     nMarket: t.nMarket,
     skillMarket: mean(t.market, t.nMarket),
   };
 }
 
+/** Highest first, null last. */
+function desc(a, b) {
+  if (a === b) return 0;
+  if (a === null) return 1;
+  if (b === null) return -1;
+  return b - a;
+}
+
 function byRank(a, b) {
   if (a.early !== b.early) return a.early ? 1 : -1;
-  if (a.skillFair !== b.skillFair) {
-    if (a.skillFair === null) return 1;
-    if (b.skillFair === null) return -1;
-    return b.skillFair - a.skillFair;
-  }
-  if (a.n !== b.n) return b.n - a.n;
-  return a.forecaster < b.forecaster ? -1 : a.forecaster > b.forecaster ? 1 : 0;
+  return (
+    (a.early ? 0 : desc(a.skillFairLow, b.skillFairLow)) ||
+    desc(a.skillFair, b.skillFair) ||
+    b.n - a.n ||
+    (a.forecaster < b.forecaster ? -1 : a.forecaster > b.forecaster ? 1 : 0)
+  );
 }
 
 /**
  * Baselines and ranked rows from closed records' lines and settled outcomes (outcome id →
- * outcomeBps). A line whose outcome has not settled counts toward nothing.
+ * outcomeBps). A line whose outcome has not settled counts toward nothing. Rows with 50 or more
+ * forecasts carrying a fair line rank by skillFairLow; early rows follow by skillFair.
  */
 export function scoreBoard(lines, results) {
   const forecasters = new Map();
@@ -103,8 +140,7 @@ export function scoreBoard(lines, results) {
     t.n++;
     t.sum += b;
     if (bf !== null) {
-      t.nFair++;
-      t.fair += bf - b;
+      addFair(t, bf - b);
       fairRow.n++;
       fairRow.sum += bf;
     }
@@ -117,8 +153,7 @@ export function scoreBoard(lines, results) {
     if (bf !== null && bm !== null) {
       fairRow.nMarket++;
       fairRow.market += bm - bf;
-      marketRow.nFair++;
-      marketRow.fair += bf - bm;
+      addFair(marketRow, bf - bm);
     }
   }
   const rows = [...forecasters].map(([forecaster, t]) => ({
@@ -133,9 +168,10 @@ export function scoreBoard(lines, results) {
   });
   const f = stats(fairRow);
   const m = stats(marketRow);
+  // Baselines have no rank, so no low end.
   const baselines = [
-    { key: "fair", label: LABELS.fair, ...f, nFair: f.n, skillFair: f.n > 0 ? 0 : null },
-    { key: "market", label: LABELS.market, ...m, nMarket: m.n, skillMarket: m.n > 0 ? 0 : null },
+    { key: "fair", label: LABELS.fair, ...f, nFair: f.n, skillFair: f.n > 0 ? 0 : null, skillFairLow: null },
+    { key: "market", label: LABELS.market, ...m, skillFairLow: null, nMarket: m.n, skillMarket: m.n > 0 ? 0 : null },
   ];
   return { baselines, rows };
 }
