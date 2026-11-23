@@ -12,6 +12,7 @@
       "brier": null,
       "nFair": 0,
       "skillFair": null,
+      "skillFairLow": null,
       "nMarket": 0,
       "skillMarket": null
     },
@@ -22,6 +23,7 @@
       "brier": null,
       "nFair": 0,
       "skillFair": null,
+      "skillFairLow": null,
       "nMarket": 0,
       "skillMarket": null
     }
