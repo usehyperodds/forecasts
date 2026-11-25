@@ -182,7 +182,7 @@ application/json`) except the daily records. Every refusal is:
 | 404 | `not_found` | no such draft, address or record day (an impossible date included), and any other path under `/forecasts`, with any method |
 | 409 | `replayed` | this forecaster already used this nonce |
 | 409 | `draft_mismatch` | `draft` names a draft for other forecasts or another wallet |
-| 410 | `draft_expired` | the draft is past its 30 minutes or already signed |
+| 410 | `draft_expired` | the draft is past its `expiresAt` (30 minutes, 10 with `forecaster`) or already signed |
 | 413 | `too_large` | the body passed 64 KB (the server stops reading there) |
 | 422 | `entries_refused` | one or more entries refused, each with its own code: `not_listed`, `fallback`, `no_event_time`, `touch_market`, `past_close`, `past_cutoff`, `out_of_order` |
 | 422 | `mixed_days` | the batch's cutoffs fall on more than one UTC day |
@@ -263,8 +263,9 @@ before, with the same body as then):
 
 ### `POST /forecasts/drafts`: a sign link for a wallet to sign
 
-For clients that hold no key (remote connectors). The draft keeps the entries for 30 minutes; the forecaster's own
-wallet signs them in the browser at the link. Hyperodds never holds a forecaster's key.
+For clients that hold no key (remote connectors). The draft keeps the entries for 30 minutes, 10 with `forecaster`
+(below); the forecaster's own wallet signs them in the browser at the link. Hyperodds never holds a forecaster's
+key.
 
 ```json
 { "forecasts": [ { "outcome": 42400, "probabilityBps": 6200 } ], "forecaster": "optional 0x… address" }
@@ -274,10 +275,11 @@ Entries are checked as a submission would be (listed, before the close, one UTC 
 that would be refused is refused now. The close is checked again when the wallet signs: a sign link whose entries
 have passed their close by then is refused as `past_close`, and the page asks for a new draft. Without
 `forecaster`, any wallet can sign the link. With `forecaster`, only that wallet can, and the answer also carries
-`typedData`, ready for a local signer to sign as is (its `time` is now and its `nonce` random). The draft keeps that
-nonce: it reads `signed` as soon as that forecaster's forecasts with that nonce and the draft's own entries are
-accepted, whether or not the submission names the draft; a batch that reuses the nonce with other entries leaves the
-draft open. A draft is signed once: of two submissions naming it, the one recorded second is refused as
+`typedData`, ready for a local signer to sign as is (its `time` is now and its `nonce` random). That `time` leaves
+the signed-time window 10 minutes later and the draft expires with it, so a draft that reads `open` always accepts
+its `typedData` signed as is. The draft keeps that nonce: it reads `signed` as soon as that forecaster's forecasts
+with that nonce and the draft's own entries are accepted, whether or not the submission names the draft; a batch
+that reuses the nonce with other entries leaves the draft open. A draft is signed once: of two submissions naming it, the one recorded second is refused as
 `draft_expired`. Anyone holding an open link sees its drafted probabilities. Answer `201`:
 
 ```json
@@ -320,7 +322,8 @@ send its `message` back unchanged as the submission's `message`.
 
 ### `GET /forecasts/board?limit=50&offset=0`
 
-`limit` 1 to 200 (default 50).
+`limit` 1 to 200 (default 50), `offset` 0 to 100,000, here and for an address; outside them the answer is
+`invalid_request`.
 
 ```json
 {
@@ -393,8 +396,9 @@ answers 404.
 | `GET /forecasts/records/<day>.jsonl` | the record (`content-type: application/x-ndjson`) |
 | `GET /forecasts/records/<day>.json` | its manifest: `{ "day", "count", "root", "sha256", "bytes", "closedAt" }` |
 
-A closed record never changes, so these are served with `cache-control: public, max-age=86400, immutable`. Only
-days with at least one forecast have a record. The same files are published as `<day>.jsonl`, `<day>.json` and
+A closed record never changes, so a day's two files are served with `cache-control: public, max-age=86400,
+immutable`. The index grows each day and is served with `public, max-age=30`. Only days with at least one forecast
+have a record. The same files are published as `<day>.jsonl`, `<day>.json` and
 `index.json` (the body of `GET /forecasts/records`) in
 [usehyperodds/forecasts](https://github.com/usehyperodds/forecasts).
 
@@ -523,13 +527,14 @@ refused as `invalid_request`, the sentence naming what was wrong. The read tools
 by name (`odds_leaderboard takes limit and offset, not page.`), and `odds_forecast_record` an address that isn't
 one with the same sentence as HTTP. Only arguments of the wrong JSON type (a string for `forecasts`, say), and
 `limit` or `offset` out of range on the read tools, are refused by the MCP layer itself, as a tool error
-`Input validation error: …`. The read tools never refuse with a code: an error there is a tool error with text
-only, without `structuredContent`.
+`MCP error -32602: Input validation error: Invalid arguments for tool <tool>: …`. The read tools never refuse with
+a code: an error there is a tool error with text only, without `structuredContent`.
 
 **`odds_forecast_record`**: read-only. Input `{ address, limit?: 1..100 (default 20), offset?, draft? }`. Answers
 the `GET /forecasts/address/<address>` body. An address with no forecast at all, which HTTP answers 404, answers
 `summary: null, total: 0, pending: 0, pendingMarkets: 0`. With `draft` it also answers `draft`: that draft's status,
-as `GET /forecasts/drafts/<draft>`.
+as `GET /forecasts/drafts/<draft>`. A draft that doesn't exist is a tool error, `This sign link doesn't exist.`, where
+HTTP answers 404.
 
 **`odds_leaderboard`**: read-only. Input `{ limit?: 1..100 (default 20), offset? }`. Answers the
 `GET /forecasts/board` body.
