@@ -68,14 +68,19 @@ At the first failure it prints where and why, then exits with status 1. The time
 recorded; [Limits](#limits) covers what that means.
 
 The Merkle root follows RFC 6962 with SHA-256, over each line's bytes without its newline, so one forecast's
-inclusion can be proven with a path. Signatures are EIP-712, domain `{ name: "Hyperodds Forecasts", version: "1" }`
-with no chain id, over one of two messages:
+inclusion can be proven with a path. Signatures are EIP-712 with no chain id, in one of two versions. Version 2
+names each market and the side its probability is for, under the domain
+`{ name: "Hyperodds Forecasts", version: "2", salt: keccak256("hyperodds:mainnet") }`; its lines end in
+`"version":2,"market":…,"side":…`, the names that were signed:
 
 ```
-Forecast(address forecaster,uint32 outcome,uint16 probabilityBps,uint64 time,uint64 nonce)
+Forecast(address forecaster,uint32 outcome,string market,string side,uint16 probabilityBps,uint64 time,uint64 nonce)
 ForecastBatch(address forecaster,ForecastEntry[] forecasts,uint64 time,uint64 nonce)
-ForecastEntry(uint32 outcome,uint16 probabilityBps)
+ForecastEntry(uint32 outcome,string market,string side,uint16 probabilityBps)
 ```
+
+Version 1 is legacy, still accepted from existing clients until it is retired: the domain
+`{ name: "Hyperodds Forecasts", version: "1" }` and the same messages without `market` and `side`.
 
 To rebuild the board and ask Hyperliquid again about every settlement:
 

@@ -21,6 +21,14 @@ export const KEYS = [
   "signature",
 ];
 
+/** A line signed under version 2 adds these after `signature`: the names it signed. */
+export const V2_KEYS = ["version", "market", "side"];
+
+/** The keys a line has, in order: version 2's added when it carries `version`. */
+export function keysOf(l) {
+  return Object.hasOwn(l, "version") ? [...KEYS, ...V2_KEYS] : KEYS;
+}
+
 export const MANIFEST_KEYS = ["day", "count", "root", "sha256", "bytes", "closedAt"];
 
 export const DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -54,7 +62,7 @@ export function merkleRoot(lines) {
 }
 
 export function formatLine(l) {
-  return JSON.stringify(Object.fromEntries(KEYS.map((k) => [k, l[k]])));
+  return JSON.stringify(Object.fromEntries(keysOf(l).map((k) => [k, l[k]])));
 }
 
 export function isIso(s) {
@@ -112,6 +120,11 @@ export function lineProblem(l) {
   if (typeof l.signature !== "string" || !/^0x[0-9a-f]{128}1[bc]$/.test(l.signature))
     return "signature is not 65 bytes of lowercase hex ending in v 1b or 1c";
   if (BigInt(`0x${l.signature.slice(66, 130)}`) > HALF_N) return "signature has a high s; the record holds low-s signatures only";
+  if (Object.hasOwn(l, "version")) {
+    if (l.version !== 2) return `version ${JSON.stringify(l.version)} is not 2; a version 1 line has no version`;
+    if (typeof l.market !== "string") return `market ${JSON.stringify(l.market)} is not a string`;
+    if (typeof l.side !== "string") return `side ${JSON.stringify(l.side)} is not a string`;
+  }
   return null;
 }
 

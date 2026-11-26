@@ -5,7 +5,26 @@ are built to it; a change here is a new version of the spec.
 
 ## Version
 
-This is **version 2**, from 2026-11-22, made before any daily record had closed. From version 1 it changes:
+This is **version 3**, from 2026-11-26, made before any daily record had closed. From version 2 it changes:
+
+- **Addresses**: an IPv6 sender counts by its /48 for every limit and cap per IP address.
+- **New forecasters**: forecasters with no forecast in a closed daily record can record 75,000 forecasts with
+  cutoffs on one UTC day between them (`day_full`); the rest of the day is kept for forecasters who have one.
+- **Requests**: submissions and drafts take `content-type: application/json` only, and answer CORS for the site's
+  own pages only.
+- **Shared addresses**: an AI connector's shared range counts as one sender on MCP only, with 20,000 forecasts per
+  cutoff day (`ip_day_cap`) and 20,000 sign links an hour; over HTTP its addresses are limited like any other.
+- **Sign links**: no limit is shared by every client; sign links naming a forecaster count per IP address and
+  forecaster.
+- **Resubmission**: the same signed message sent again doesn't count toward its forecaster's submission limit.
+- **EIP-712 version 2**: each forecast names its market and side (`market_mismatch` when they aren't the
+  market's), under a domain salted per network; version 1 stays accepted as legacy until it is retired. Lines
+  signed under version 2 carry `version`, `market` and `side` in the daily record. Drafts answer `network`, and a
+  draft naming its forecaster hands out version 2 typed data.
+- **Claims**: a draft answers a `claim` for its maker; a draft's `signer` is shown only with it
+  (`x-draft-claim`, or `claim` on `odds_forecast_record`).
+
+Version 2, from 2026-11-22, changed from version 1:
 
 - **Rank**: rows with 50 or more forecasts carrying a fair line rank by `skillFairLow`, their mean skill over the
   fair line less two standard errors, and every row carries it (Scoring).
@@ -22,8 +41,8 @@ This is **version 2**, from 2026-11-22, made before any daily record had closed.
 - **MCP**: no argument is ignored.
 - **Shared addresses**: an AI connector's shared range has no per-address limits; each forecaster's own apply.
 
-Signed messages and the EIP-712 domain are unchanged (its `version` stays `"1"`), as are the record's layout and its
-hashes.
+In version 2 of the spec, signed messages and the EIP-712 domain were unchanged (its `version` stayed `"1"`), as
+were the record's layout and its hashes.
 
 ## Units and names
 
@@ -38,25 +57,38 @@ hashes.
 
 ## EIP-712
 
-One domain for both message types. It has no `chainId` and no `verifyingContract`: there is no contract, and
-without a chain id the message doesn't depend on the wallet's network. Signing was checked with viem's
-`signTypedData` and an injected EIP-1193 wallet.
+Two versions of the signed message. **Version 2** is current: each forecast also names its market and the side
+its probability is for, so a wallet shows what it signs, and its domain is salted per Hyperliquid network, so a
+signature holds on one deployment only. **Version 1** is legacy: the same domain everywhere, markets by number
+only. It is still accepted from existing clients while they move to version 2, and will be retired on a date this
+spec will give. Neither domain has a `chainId` or a `verifyingContract`: there is no contract, and without a chain
+id the message doesn't depend on the wallet's network. Signing was checked with viem's `signTypedData` and an
+injected EIP-1193 wallet.
+
+A submission is version 2 when its message names its markets: `market` and `side` on a `Forecast`, or on every
+entry of a `ForecastBatch`. Names on some entries and not others, or one without the other, are refused as
+`invalid_request`.
 
 ```ts
-const domain = { name: "Hyperodds Forecasts", version: "1" };
+// Version 2. salt is keccak256("hyperodds:" + network): "hyperodds:mainnet" on usehyperodds.com.
+const domain = {
+  name: "Hyperodds Forecasts",
+  version: "2",
+  salt: "0xc39792a05cff7539d2e0315b8f48f8ba52d0d5633867ed004c25a66c4160eeb4",
+};
 
-// One forecast.
 const forecastTypes = {
   Forecast: [
     { name: "forecaster", type: "address" },
     { name: "outcome", type: "uint32" },
+    { name: "market", type: "string" },
+    { name: "side", type: "string" },
     { name: "probabilityBps", type: "uint16" },
     { name: "time", type: "uint64" },
     { name: "nonce", type: "uint64" },
   ],
 };
 
-// A batch of 1 to 50 forecasts under one signature.
 const batchTypes = {
   ForecastBatch: [
     { name: "forecaster", type: "address" },
@@ -66,10 +98,42 @@ const batchTypes = {
   ],
   ForecastEntry: [
     { name: "outcome", type: "uint32" },
+    { name: "market", type: "string" },
+    { name: "side", type: "string" },
     { name: "probabilityBps", type: "uint16" },
   ],
 };
 ```
+
+`market` is the market's title and `side` its side 0 label, exactly as Hyperodds shows them: a draft's
+`forecasts[].title` and `sides[0]`, or `odds_markets`' `title` and `sides[0]` (one line, format characters
+removed). A version 2 forecast whose `market` or `side` isn't the market's when it is recorded is refused, entry
+code `market_mismatch`; the names recorded with it are the ones it signed. Every draft answers the `network` its
+forecasts are signed for.
+
+| | Value |
+|---|---|
+| Domain type | `EIP712Domain(string name,string version,bytes32 salt)` |
+| Salt, mainnet | `keccak256("hyperodds:mainnet")` = `0xc39792a05cff7539d2e0315b8f48f8ba52d0d5633867ed004c25a66c4160eeb4` |
+| Salt, testnet | `keccak256("hyperodds:testnet")` = `0xbefd4257376df87b4238d51baa58cb42138b258e25473b94ced4e206b6acd863` |
+| Domain separator, mainnet | `0x12e0f52833f9791dcb35db09d561aacc84ec21766e497c7618c159a931379d43` |
+| Domain separator, testnet | `0xf43fd5402336e8b029dfcac295e17ed1c11f178e45b23c23aada958b01bb18cb` |
+| `Forecast` type hash | `keccak256("Forecast(address forecaster,uint32 outcome,string market,string side,uint16 probabilityBps,uint64 time,uint64 nonce)")` = `0xf17e0807d1ad95830c7ed23f72a0c650744e9d7f4f2b66c28de313920555c836` |
+| `ForecastBatch` type hash | `keccak256("ForecastBatch(address forecaster,ForecastEntry[] forecasts,uint64 time,uint64 nonce)ForecastEntry(uint32 outcome,string market,string side,uint16 probabilityBps)")` = `0x5445b9122c3debdb9e5817cea50eac968ca3861f9ad1195f83830640f7579970` |
+| `ForecastEntry` type hash | `0xb7b2fc97c148a7c38b4d821a7c4fabf1c9d2e7ff7d356597adab119bef4af363` |
+
+Version 2 test vectors on mainnet, signed with the private key `0x00…01` (address
+`0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf`), a well-known test key that must never hold funds. BTC is
+`{outcome: 42400, market: "BTC above 55,765 on Nov 22 at 06:00 UTC", side: "Yes"}`, ETH
+`{outcome: 42501, market: "ETH above 3,000 on Nov 22 at 06:00 UTC", side: "Yes"}`:
+
+| Message | Digest | Signature |
+|---|---|---|
+| `Forecast {forecaster: 0x7E5F…5Bdf, …BTC, probabilityBps: 6200, time: 1763719200, nonce: 1763719200000}` | `0xae6aa9a3a6ef3b2fd8759906d59e200797d8aa2167778389e728d6ab282b5547` | `0xd16082f21b0a948afb6b6989797d76a8998907650777363ca2311c2912e5c5f3492b0b8d51db819b08f072e57e96d1f2533adc9c441b28bbbdde9f190926e4061c` |
+| `ForecastBatch {forecaster: 0x7E5F…5Bdf, forecasts: [{…BTC, 6200}, {…ETH, 3100}], time: 1763719200, nonce: 1763719200001}` | `0x46fc072d89b2ed1df1c1c97f00b9afb522deba6f8379065c0de10fcc759f7a6f` | `0xc1188ccdbc21875662dbb6d048b5a2c6eb160cb54333574cbe91339b98aa59aa5666002a6f785cd2e948bb76d8f2e522c88a592b646ec876e0248ce4a1f45ee11b` |
+
+**Version 1 (legacy).** The domain is `{ name: "Hyperodds Forecasts", version: "1" }` and the types are version
+2's without `market` and `side`:
 
 | | Value |
 |---|---|
@@ -78,9 +142,6 @@ const batchTypes = {
 | `Forecast` type hash | `keccak256("Forecast(address forecaster,uint32 outcome,uint16 probabilityBps,uint64 time,uint64 nonce)")` = `0xa8d516c0479c1166e3591b894d95ba27b4c73b848308820d52435e923bd368e6` |
 | `ForecastBatch` type hash | `keccak256("ForecastBatch(address forecaster,ForecastEntry[] forecasts,uint64 time,uint64 nonce)ForecastEntry(uint32 outcome,uint16 probabilityBps)")` = `0xff5ca7ea63ac690bc636955ac4763383f2c84c4803111d26b74195eba18aa6f9` |
 | `ForecastEntry` type hash | `0x36e1078a25cea9e34eff3e4b746daee80ce54e7d5b97256dbf173dade80130bc` |
-
-Test vectors, signed with the private key `0x00…01` (address `0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf`), a
-well-known test key that must never hold funds:
 
 | Message | Digest | Signature |
 |---|---|---|
@@ -164,7 +225,10 @@ At acceptance the server records, from its own live state at that moment:
 ## HTTP
 
 Base URL `https://api.usehyperodds.com` (locally the API's port). Requests and answers are JSON (`content-type:
-application/json`) except the daily records. Every refusal is:
+application/json`) except the daily records; a submission or draft sent as any other content type is refused as
+`invalid_request` before its body is read. Reads answer CORS for any origin. Submissions and drafts answer it only
+for the site's own pages, so a browser sends them only from `https://usehyperodds.com`; agents and servers send
+them without CORS. Every refusal is:
 
 ```json
 { "error": "A plain sentence for a person.", "code": "entries_refused", "entries": [ { "index": 2, "outcome": 42400, "code": "past_close", "error": "This market has closed for forecasts: entries close an hour before its cutoff." } ] }
@@ -184,35 +248,37 @@ application/json`) except the daily records. Every refusal is:
 | 409 | `draft_mismatch` | `draft` names a draft for other forecasts or another wallet |
 | 410 | `draft_expired` | the draft is past its `expiresAt` (30 minutes, 10 with `forecaster`) or already signed |
 | 413 | `too_large` | the body passed 64 KB (the server stops reading there) |
-| 422 | `entries_refused` | one or more entries refused, each with its own code: `not_listed`, `fallback`, `no_event_time`, `touch_market`, `past_close`, `past_cutoff`, `out_of_order` |
+| 422 | `entries_refused` | one or more entries refused, each with its own code: `not_listed`, `fallback`, `no_event_time`, `touch_market`, `past_close`, `past_cutoff`, `out_of_order`, `market_mismatch` |
 | 422 | `mixed_days` | the batch's cutoffs fall on more than one UTC day |
 | 429 | `rate_limited` | over a rate limit below; `retry-after` says when to try again |
 | 429 | `daily_cap` | the forecaster has 1,000 forecasts accepted today (UTC); `retry-after` points at 00:00 UTC |
 | 429 | `ip_daily_cap` | 2,000 forecasts were accepted from this IP address today (UTC); `retry-after` points at 00:00 UTC |
-| 429 | `ip_day_cap` | this IP address has 500 forecasts recorded with cutoffs on that UTC day, whichever days it sent them on; no `retry-after` |
-| 429 | `day_full` | 500,000 forecasts are recorded with cutoffs on that UTC day; no `retry-after`, the day takes no more |
+| 429 | `ip_day_cap` | this IP address has 500 forecasts recorded with cutoffs on that UTC day, whichever days it sent them on (a shared range on MCP: 20,000); no `retry-after` |
+| 429 | `day_full` | 500,000 forecasts are recorded with cutoffs on that UTC day, or the forecaster has no forecast in a closed daily record and such forecasters have recorded 75,000 for that day between them; no `retry-after` |
 | 500 | `internal` | `Something went wrong on our side. Try again in a minute.` |
 | 503 | `loading` | markets are still loading after a restart |
 
-Limits, all per UTC day or per rolling window as named:
+Limits, all per UTC day or per rolling window as named. An IPv6 address counts by its /48:
 
 | What | Limit |
 |---|---|
 | Submissions and drafts, per IP address | 1 a second, in bursts of 10 |
-| Submissions, per forecaster | 10 a minute, in bursts of 10 |
+| Submissions, per forecaster | 10 a minute, in bursts of 10; a message recorded before, sent again, doesn't count |
 | Accepted forecasts, per forecaster | 1,000 a UTC day (`daily_cap`) |
 | Accepted forecasts, per IP address | 2,000 a UTC day (`ip_daily_cap`) |
 | Recorded forecasts, per IP address, per cutoff day | 500 (`ip_day_cap`) |
 | Recorded forecasts, per cutoff day, all forecasters | 500,000 (`day_full`) |
+| Recorded forecasts, per cutoff day, forecasters with no forecast in a closed daily record | 75,000 between them (`day_full`) |
 | Drafts, per IP address | 600 an hour |
-| Drafts naming a forecaster, per forecaster | 60 an hour |
-| Drafts, all clients | 20,000 an hour |
+| Drafts naming a forecaster, per IP address and forecaster | 60 an hour |
 | Reads (`GET`), per IP address | 10 a second, in bursts of 60 |
 | Body | 64 KB |
 
-A refused or unreadable body still counts toward its IP address's limit on submissions and drafts. An address in a
-range Hyperodds lists as shared by an AI connector, which many people's agents send from, is limited by forecaster
-instead: the limits and caps per IP address don't apply to it, and those per forecaster and on all clients do.
+A refused or unreadable body still counts toward its IP address's limit on submissions and drafts. On MCP, a range
+Hyperodds lists as shared by an AI connector, which many people's agents send from, counts as one sender: its
+forecasts share 20,000 per cutoff day (`ip_day_cap`) and its sign links 20,000 an hour, the MCP endpoint meters its
+requests, and every forecaster's own limits still apply. Over HTTP an address in such a range is limited like any
+other.
 
 ### `POST /forecasts`: record a signed forecast or batch
 
@@ -233,8 +299,9 @@ instead: the limits and caps per IP address don't apply to it, and those per for
 }
 ```
 
-For one forecast, `type` is `"Forecast"` and `message` is
-`{ "forecaster", "outcome", "probabilityBps", "time", "nonce" }`. Answer `201` (`200` for a message recorded
+A version 2 entry adds `"market"` and `"side"` after `"outcome"`. For one forecast, `type` is `"Forecast"` and
+`message` is `{ "forecaster", "outcome", "market", "side", "probabilityBps", "time", "nonce" }` (version 1:
+without `market` and `side`). Answer `201` (`200` for a message recorded
 before, with the same body as then):
 
 ```json
@@ -279,12 +346,17 @@ have passed their close by then is refused as `past_close`, and the page asks fo
 the signed-time window 10 minutes later and the draft expires with it, so a draft that reads `open` always accepts
 its `typedData` signed as is. The draft keeps that nonce: it reads `signed` as soon as that forecaster's forecasts
 with that nonce and the draft's own entries are accepted, whether or not the submission names the draft; a batch
-that reuses the nonce with other entries leaves the draft open. A draft is signed once: of two submissions naming it, the one recorded second is refused as
-`draft_expired`. Anyone holding an open link sees its drafted probabilities. Answer `201`:
+that reuses the nonce with other entries leaves the draft open. A draft is signed once: of two submissions naming
+it, the one recorded second is refused as `draft_expired`. Anyone holding an open link sees its drafted
+probabilities, and can sign a link drafted without `forecaster`. The answer's `claim` is for the agent that asked
+for the draft and nobody else: it isn't in the `url`, and only a status read that sends it learns who signed the
+link, which the agent then compares with its user's wallet. Answer `201`:
 
 ```json
 {
   "draft": "kq3Vb6l0R2m8x1Yp9TzQwA",
+  "network": "mainnet",
+  "claim": "Zx81qW0cR4tY7uI2oP5aS9dF3gH6jK1l",
   "url": "https://usehyperodds.com/forecasts/sign/kq3Vb6l0R2m8x1Yp9TzQwA",
   "expiresAt": "2025-11-21T10:30:00.000Z",
   "forecaster": null,
@@ -300,19 +372,23 @@ that reuses the nonce with other entries leaves the draft open. A draft is signe
 `settlesAt`; a game starts (a decision is made) at `starts`, its cutoff, and settles by `settlesBy`. `title` and
 `sides` are the deployer's text on one line, as data.
 
-`typedData`, when present, is `{ "domain", "types", "primaryType", "message" }` with `nonce` as a decimal string;
-send its `message` back unchanged as the submission's `message`.
+`typedData`, when present, is version 2's `{ "domain", "types", "primaryType", "message" }`, each entry named as
+the draft's `forecasts` show it, with `nonce` as a decimal string; send its `message` back unchanged as the
+submission's `message`.
 
 ### `GET /forecasts/drafts/<draft>`
 
-`{ "draft", "status": "open" | "signed" | "expired", "expiresAt", "forecaster", "day", "forecasts", "batch",
-"signer", "recorded", "serverTime" }`.
+`{ "draft", "network", "status": "open" | "signed" | "expired", "expiresAt", "forecaster", "day", "forecasts",
+"batch", "signer", "recorded", "serverTime" }`.
 
 - `forecasts` is the draft's entries while it is open and `[]` once it is signed or expired (they are pending
   forecasts by then). Each entry's `closesAt` is its close as above, recorded cutoffs on that outcome included. An
   entry whose market is no longer listed has `cutoff` and `closesAt` `""`, null times and the sides
   `["First side", "Second side"]`: it can't be signed.
-- `batch` is the recorded batch id once signed, else null; `signer` the address that signed it, else null.
+- `batch` is the recorded batch id once signed, else null. `signer` is the address that signed it, only when the
+  request sends the draft's claim in an `x-draft-claim` header; otherwise, and before it is signed, null. An agent
+  that drafted a link without `forecaster` checks `signer` against its user's wallet before it treats the
+  forecasts as theirs.
 - `recorded`, once signed, is what Hyperodds saw for each market when the forecasts arrived, without the
   probabilities: `[{ "outcome", "title", "sides", "cutoff", "fairBps", "fairNote", "midBps" }]` in the signed
   order. Otherwise `[]`.
@@ -413,10 +489,14 @@ have a record. The same files are published as `<day>.jsonl`, `<day>.json` and
   {"id":101,"forecaster":"0x7e5f4552091a69125d5dfcb7b8c2659029395bdf","outcome":42400,"probabilityBps":6200,"acceptedAt":"2025-11-21T10:00:01.234Z","cutoff":"2025-11-22T06:00:00.000Z","fairBps":5810,"fairNote":null,"midBps":6050,"bookTime":"2025-11-21T10:00:00.950Z","batch":17,"index":0,"size":2,"type":"ForecastBatch","time":1763719200,"nonce":"1763719200001","signature":"0xf905…cd71b"}
   ```
 
+- A line signed under version 2 adds `"version":2,"market":"…","side":"…"` after `signature`: the names it signed.
+  A version 1 line has neither.
 - `batch` is the batch id, `index` the entry's position in the signed `forecasts` array (0 for a `Forecast`),
   `size` the number of entries signed. Every entry of a batch is in the same record, so the signature of any line
   can be checked: take the lines with its `batch`, order them by `index`, rebuild the message from `forecaster`,
-  `(outcome, probabilityBps)` per entry, `time` and `nonce`, and recover with `type`'s types.
+  `(outcome, probabilityBps)` per entry (`(outcome, market, side, probabilityBps)` on version 2 lines), `time` and
+  `nonce`, and recover with `type`'s types under that version's domain (version 2: the mainnet salt for
+  usehyperodds.com's records).
 - **`sha256`** is the SHA-256 of the file's bytes.
 - **`root`** is the RFC 6962 Merkle tree hash over the lines (each line's bytes without its `\n`), so one
   forecast's inclusion can be shown with a path. With SHA-256 as H: the root of no lines is `H("")`; of one line
@@ -530,10 +610,10 @@ one with the same sentence as HTTP. Only arguments of the wrong JSON type (a str
 `MCP error -32602: Input validation error: Invalid arguments for tool <tool>: …`. The read tools never refuse with
 a code: an error there is a tool error with text only, without `structuredContent`.
 
-**`odds_forecast_record`**: read-only. Input `{ address, limit?: 1..100 (default 20), offset?, draft? }`. Answers
-the `GET /forecasts/address/<address>` body. An address with no forecast at all, which HTTP answers 404, answers
+**`odds_forecast_record`**: read-only. Input `{ address, limit?: 1..100 (default 20), offset?, draft?, claim? }`.
+Answers the `GET /forecasts/address/<address>` body. An address with no forecast at all, which HTTP answers 404, answers
 `summary: null, total: 0, pending: 0, pendingMarkets: 0`. With `draft` it also answers `draft`: that draft's status,
-as `GET /forecasts/drafts/<draft>`. A draft that doesn't exist is a tool error, `This sign link doesn't exist.`, where
+as `GET /forecasts/drafts/<draft>`, its `signer` shown when `claim` is the draft's. A draft that doesn't exist is a tool error, `This sign link doesn't exist.`, where
 HTTP answers 404.
 
 **`odds_leaderboard`**: read-only. Input `{ limit?: 1..100 (default 20), offset? }`. Answers the

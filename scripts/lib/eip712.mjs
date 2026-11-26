@@ -1,6 +1,7 @@
 import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { keccak_256 } from "@noble/hashes/sha3.js";
 
+/** Version 1 (legacy): the same domain on every deployment, markets by number only. */
 export const DOMAIN = { name: "Hyperodds Forecasts", version: "1" };
 
 const DOMAIN_TYPES = {
@@ -9,6 +10,23 @@ const DOMAIN_TYPES = {
     { name: "version", type: "string" },
   ],
 };
+
+const DOMAIN_V2_TYPES = {
+  EIP712Domain: [
+    { name: "name", type: "string" },
+    { name: "version", type: "string" },
+    { name: "salt", type: "bytes32" },
+  ],
+};
+
+/** Version 2's salt is keccak256("hyperodds:" + network). usehyperodds.com's records are mainnet's. */
+export function saltOf(network) {
+  return toHex(keccak_256(new TextEncoder().encode(`hyperodds:${network}`)));
+}
+
+export function domainV2(network = "mainnet") {
+  return { name: "Hyperodds Forecasts", version: "2", salt: saltOf(network) };
+}
 
 export const TYPES = {
   Forecast: {
@@ -29,6 +47,35 @@ export const TYPES = {
     ],
     ForecastEntry: [
       { name: "outcome", type: "uint32" },
+      { name: "probabilityBps", type: "uint16" },
+    ],
+  },
+};
+
+/** Version 2: each forecast also names its market's title and the side its probability is for. */
+export const TYPES_V2 = {
+  Forecast: {
+    Forecast: [
+      { name: "forecaster", type: "address" },
+      { name: "outcome", type: "uint32" },
+      { name: "market", type: "string" },
+      { name: "side", type: "string" },
+      { name: "probabilityBps", type: "uint16" },
+      { name: "time", type: "uint64" },
+      { name: "nonce", type: "uint64" },
+    ],
+  },
+  ForecastBatch: {
+    ForecastBatch: [
+      { name: "forecaster", type: "address" },
+      { name: "forecasts", type: "ForecastEntry[]" },
+      { name: "time", type: "uint64" },
+      { name: "nonce", type: "uint64" },
+    ],
+    ForecastEntry: [
+      { name: "outcome", type: "uint32" },
+      { name: "market", type: "string" },
+      { name: "side", type: "string" },
       { name: "probabilityBps", type: "uint16" },
     ],
   },
@@ -79,6 +126,10 @@ function encodeValue(type, value, types) {
   }
   if (types[type]) return hashStruct(type, value, types);
   if (type === "string") return keccak_256(utf8.encode(value));
+  if (type === "bytes32") {
+    if (!/^0x[0-9a-fA-F]{64}$/.test(value)) throw new Error(`not 32 bytes: ${value}`);
+    return fromHex(value);
+  }
   if (type === "address") {
     if (!/^0x[0-9a-fA-F]{40}$/.test(value)) throw new Error(`not an address: ${value}`);
     return word(BigInt(value));
@@ -99,11 +150,19 @@ export function hashStruct(primary, data, types) {
 
 export const DOMAIN_SEPARATOR = hashStruct("EIP712Domain", DOMAIN, DOMAIN_TYPES);
 
-/** The EIP-712 digest a forecaster signs for a `Forecast` or `ForecastBatch` message. */
-export function digest(type, message) {
-  const types = TYPES[type];
+export function domainSeparatorV2(network = "mainnet") {
+  return hashStruct("EIP712Domain", domainV2(network), DOMAIN_V2_TYPES);
+}
+
+/**
+ * The EIP-712 digest a forecaster signs for a `Forecast` or `ForecastBatch` message: under version 2's
+ * domain for `network` and its types when `version` is 2, else version 1's.
+ */
+export function digest(type, message, version = 1, network = "mainnet") {
+  const types = (version === 2 ? TYPES_V2 : TYPES)[type];
   if (!types) throw new Error(`unknown message type ${type}`);
-  return keccak_256(concat([Uint8Array.of(0x19, 0x01), DOMAIN_SEPARATOR, hashStruct(type, message, types)]));
+  const separator = version === 2 ? domainSeparatorV2(network) : DOMAIN_SEPARATOR;
+  return keccak_256(concat([Uint8Array.of(0x19, 0x01), separator, hashStruct(type, message, types)]));
 }
 
 /**

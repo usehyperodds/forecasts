@@ -281,3 +281,24 @@ test("the CLI names the first failure and exits 1", async () => {
     return true;
   });
 });
+
+test("a line signed under version 2 carries its names, and its signature checks with them", async () => {
+  // Line 4 of 2026-10-22, key 2's one-forecast batch, signed again under version 2.
+  const names = { version: 2, market: "BTC above 82,574 at Oct 16 08:00 UTC", side: "Yes" };
+  const v2 = (l, signedMarket = names.market) => {
+    const message = { forecaster: l.forecaster, outcome: l.outcome, market: signedMarket, side: names.side, probabilityBps: l.probabilityBps, time: l.time, nonce: l.nonce };
+    return { ...l, ...names, signature: sign(digest("Forecast", message, 2), key(2)) };
+  };
+  assert.equal(verifyRecords(await edited(editField(3, (l) => v2(l)))).length, 2);
+  const line = formatLine(v2(JSON.parse((await load("valid")).days.get("2026-10-22").jsonl.toString("utf8").split("\n")[3])));
+  assert.match(line, /"signature":"0x[0-9a-f]{130}","version":2,"market":"BTC above 82,574 at Oct 16 08:00 UTC","side":"Yes"\}$/);
+  // Names other than the signed ones don't recover to the forecaster.
+  const renamed = failure(await edited(editField(3, (l) => v2(l, "BTC above 1 at Oct 16 08:00 UTC"))));
+  assert.match(renamed.detail, /^batch \d+'s signature recovers to 0x[0-9a-f]{40}, not to its forecaster/);
+  // A version that isn't 2, or names without a version, aren't the record's format.
+  assert.match(failure(await edited(editField(3, (l) => ({ ...v2(l), version: 1 })))).detail, /^version 1 is not 2/);
+  assert.match(
+    failure(await edited(editLine(3, (s) => s.replace(/\}$/, ',"market":"x","side":"y"}')))).detail,
+    /^has unexpected "market", "side"/,
+  );
+});

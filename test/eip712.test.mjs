@@ -1,6 +1,17 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { DOMAIN_SEPARATOR, digest, encodeType, recover, toHex, TYPES, typeHash } from "../scripts/lib/eip712.mjs";
+import {
+  DOMAIN_SEPARATOR,
+  digest,
+  domainSeparatorV2,
+  encodeType,
+  recover,
+  saltOf,
+  TYPES,
+  TYPES_V2,
+  toHex,
+  typeHash,
+} from "../scripts/lib/eip712.mjs";
 import { key, sign } from "./keys.mjs";
 
 const ADDRESS = "0x7e5f4552091a69125d5dfcb7b8c2659029395bdf";
@@ -89,4 +100,42 @@ test("values that do not fit their type are refused", () => {
   assert.throws(() => digest("Forecast", { ...single, probabilityBps: 65536 }), /uint16/);
   assert.throws(() => digest("Forecast", { ...single, nonce: (1n << 64n).toString() }), /uint64/);
   assert.throws(() => digest("Forecast", { ...single, forecaster: "0x1234" }), /address/);
+});
+
+test("version 2's salts, domain separators and test vectors match the spec", () => {
+  assert.equal(saltOf("mainnet"), "0xc39792a05cff7539d2e0315b8f48f8ba52d0d5633867ed004c25a66c4160eeb4");
+  assert.equal(saltOf("testnet"), "0xbefd4257376df87b4238d51baa58cb42138b258e25473b94ced4e206b6acd863");
+  assert.equal(toHex(domainSeparatorV2("mainnet")), "0x12e0f52833f9791dcb35db09d561aacc84ec21766e497c7618c159a931379d43");
+  assert.equal(toHex(domainSeparatorV2("testnet")), "0xf43fd5402336e8b029dfcac295e17ed1c11f178e45b23c23aada958b01bb18cb");
+  assert.equal(
+    toHex(typeHash("Forecast", TYPES_V2.Forecast)),
+    "0xf17e0807d1ad95830c7ed23f72a0c650744e9d7f4f2b66c28de313920555c836",
+  );
+  assert.equal(
+    toHex(typeHash("ForecastBatch", TYPES_V2.ForecastBatch)),
+    "0x5445b9122c3debdb9e5817cea50eac968ca3861f9ad1195f83830640f7579970",
+  );
+  const btc = { outcome: 42400, market: "BTC above 55,765 on Nov 22 at 06:00 UTC", side: "Yes" };
+  const one = { forecaster: single.forecaster, ...btc, probabilityBps: 6200, time: 1763719200, nonce: "1763719200000" };
+  const two = {
+    forecaster: single.forecaster,
+    forecasts: [
+      { ...btc, probabilityBps: 6200 },
+      { outcome: 42501, market: "ETH above 3,000 on Nov 22 at 06:00 UTC", side: "Yes", probabilityBps: 3100 },
+    ],
+    time: 1763719200,
+    nonce: "1763719200001",
+  };
+  assert.equal(toHex(digest("Forecast", one, 2)), "0xae6aa9a3a6ef3b2fd8759906d59e200797d8aa2167778389e728d6ab282b5547");
+  assert.equal(toHex(digest("ForecastBatch", two, 2)), "0x46fc072d89b2ed1df1c1c97f00b9afb522deba6f8379065c0de10fcc759f7a6f");
+  assert.equal(
+    sign(digest("Forecast", one, 2), key(1)),
+    "0xd16082f21b0a948afb6b6989797d76a8998907650777363ca2311c2912e5c5f3492b0b8d51db819b08f072e57e96d1f2533adc9c441b28bbbdde9f190926e4061c",
+  );
+  assert.equal(
+    sign(digest("ForecastBatch", two, 2), key(1)),
+    "0xc1188ccdbc21875662dbb6d048b5a2c6eb160cb54333574cbe91339b98aa59aa5666002a6f785cd2e948bb76d8f2e522c88a592b646ec876e0248ce4a1f45ee11b",
+  );
+  // The same message on the other network is another digest.
+  assert.notEqual(toHex(digest("Forecast", one, 2, "testnet")), toHex(digest("Forecast", one, 2)));
 });
