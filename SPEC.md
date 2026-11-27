@@ -5,8 +5,14 @@ are built to it; a change here is a new revision of the spec.
 
 ## Revision
 
-This is **spec revision 3**, from 2026-11-26, made before any daily record had closed. From revision 2 it
+This is **spec revision 4**, from 2026-11-27, made before any daily record had closed. From revision 3 it
 changes:
+
+- **Message version 1 retired**: a submission whose message names no market is refused as `version_2_required`
+  (400) before its signature is read. Every forecast is signed as message version 2, and every line of a daily
+  record carries `version`, `market` and `side`.
+
+Spec revision 3, from 2026-11-26, changed from revision 2:
 
 - **Addresses**: an IPv6 sender counts by its /48 for every limit and cap per IP address.
 - **New forecasters**: forecasters with no forecast in a closed daily record can record 75,000 forecasts with
@@ -19,9 +25,9 @@ changes:
   forecaster.
 - **Resubmission**: the same signed message sent again doesn't count toward its forecaster's submission limit.
 - **Message version 2**: each forecast names its market and side (`market_mismatch` when they aren't the
-  market's), under a domain salted per network; message version 1 stays accepted as legacy until it is retired.
-  Lines signed under message version 2 carry `version`, `market` and `side` in the daily record. Drafts answer
-  `network`, and a draft naming its forecaster hands out message version 2 typed data.
+  market's), under a domain salted per network; message version 1 stayed accepted until revision 4. Lines signed
+  under message version 2 carry `version`, `market` and `side` in the daily record. Drafts answer `network`, and
+  a draft naming its forecaster hands out message version 2 typed data.
 - **Claims**: a draft answers a `claim` for its maker; a draft's `signer` is shown only with it
   (`x-draft-claim`, or `claim` on `odds_forecast_record`).
 
@@ -58,17 +64,17 @@ the record's layout and its hashes.
 
 ## EIP-712
 
-Two versions of the signed message. **Message version 2** is current: each forecast also names its market and the
-side its probability is for, so a wallet shows what it signs, and its domain is salted per Hyperliquid network, so
-a signature holds on one deployment only. **Message version 1** is legacy: the same domain everywhere, markets by
-number only. It is still accepted from existing clients while they move to message version 2, and will be retired
-on a date this spec will give. Neither domain has a `chainId` or a `verifyingContract`: there is no contract, and
-without a chain id the message doesn't depend on the wallet's network. Signing was checked with viem's
-`signTypedData` and an injected EIP-1193 wallet.
+The signed message is **message version 2**: each forecast names its market and the side its probability is for,
+so a wallet shows what it signs, and its domain is salted per Hyperliquid network, so a signature holds on one
+deployment only. The domain has no `chainId` and no `verifyingContract`: there is no contract, and without a chain
+id the message doesn't depend on the wallet's network. Signing was checked with viem's `signTypedData` and an
+injected EIP-1193 wallet.
 
-A submission is message version 2 when its message names its markets: `market` and `side` on a `Forecast`, or on
-every entry of a `ForecastBatch`. Names on some entries and not others, or one without the other, are refused as
-`invalid_request`.
+`market` and `side` are required on a `Forecast` and on every entry of a `ForecastBatch`. A submission that names
+no market anywhere is message version 1, which named markets by number only under the domain
+`{ name: "Hyperodds Forecasts", version: "1" }`; it was retired on 2026-11-27 and is refused as
+`version_2_required` before its signature is read. Names on some entries and not others, or one without the
+other, are refused as `invalid_request`.
 
 ```ts
 // Message version 2. salt is keccak256("hyperodds:" + network): "hyperodds:mainnet" on usehyperodds.com.
@@ -108,7 +114,7 @@ const batchTypes = {
 
 `market` is the market's title and `side` its side 0 label, exactly as Hyperodds shows them: a draft's
 `forecasts[].title` and `sides[0]`, or `odds_markets`' `title` and `sides[0]` (one line, format characters
-removed). A message version 2 forecast whose `market` or `side` isn't the market's when it is recorded is refused,
+removed). A forecast whose `market` or `side` isn't the market's when it is recorded is refused,
 entry code `market_mismatch`; the names recorded with it are the ones it signed. Every draft answers the `network`
 its forecasts are signed for.
 
@@ -123,7 +129,7 @@ its forecasts are signed for.
 | `ForecastBatch` type hash | `keccak256("ForecastBatch(address forecaster,ForecastEntry[] forecasts,uint64 time,uint64 nonce)ForecastEntry(uint32 outcome,string market,string side,uint16 probabilityBps)")` = `0x5445b9122c3debdb9e5817cea50eac968ca3861f9ad1195f83830640f7579970` |
 | `ForecastEntry` type hash | `0xb7b2fc97c148a7c38b4d821a7c4fabf1c9d2e7ff7d356597adab119bef4af363` |
 
-Message version 2 test vectors on mainnet, signed with the private key `0x00…01` (address
+Test vectors on mainnet, signed with the private key `0x00…01` (address
 `0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf`), a well-known test key that must never hold funds. BTC is
 `{outcome: 42400, market: "BTC above 55,765 on Nov 22 at 06:00 UTC", side: "Yes"}`, ETH
 `{outcome: 42501, market: "ETH above 3,000 on Nov 22 at 06:00 UTC", side: "Yes"}`:
@@ -132,22 +138,6 @@ Message version 2 test vectors on mainnet, signed with the private key `0x00…0
 |---|---|---|
 | `Forecast {forecaster: 0x7E5F…5Bdf, …BTC, probabilityBps: 6200, time: 1763719200, nonce: 1763719200000}` | `0xae6aa9a3a6ef3b2fd8759906d59e200797d8aa2167778389e728d6ab282b5547` | `0xd16082f21b0a948afb6b6989797d76a8998907650777363ca2311c2912e5c5f3492b0b8d51db819b08f072e57e96d1f2533adc9c441b28bbbdde9f190926e4061c` |
 | `ForecastBatch {forecaster: 0x7E5F…5Bdf, forecasts: [{…BTC, 6200}, {…ETH, 3100}], time: 1763719200, nonce: 1763719200001}` | `0x46fc072d89b2ed1df1c1c97f00b9afb522deba6f8379065c0de10fcc759f7a6f` | `0xc1188ccdbc21875662dbb6d048b5a2c6eb160cb54333574cbe91339b98aa59aa5666002a6f785cd2e948bb76d8f2e522c88a592b646ec876e0248ce4a1f45ee11b` |
-
-**Message version 1 (legacy).** The domain is `{ name: "Hyperodds Forecasts", version: "1" }` and the types are
-message version 2's without `market` and `side`:
-
-| | Value |
-|---|---|
-| Domain type | `EIP712Domain(string name,string version)` |
-| Domain separator | `0x8c35fadb67824908e8f620e61384ee244830a28d798764768569090f3d929e37` |
-| `Forecast` type hash | `keccak256("Forecast(address forecaster,uint32 outcome,uint16 probabilityBps,uint64 time,uint64 nonce)")` = `0xa8d516c0479c1166e3591b894d95ba27b4c73b848308820d52435e923bd368e6` |
-| `ForecastBatch` type hash | `keccak256("ForecastBatch(address forecaster,ForecastEntry[] forecasts,uint64 time,uint64 nonce)ForecastEntry(uint32 outcome,uint16 probabilityBps)")` = `0xff5ca7ea63ac690bc636955ac4763383f2c84c4803111d26b74195eba18aa6f9` |
-| `ForecastEntry` type hash | `0x36e1078a25cea9e34eff3e4b746daee80ce54e7d5b97256dbf173dade80130bc` |
-
-| Message | Digest | Signature |
-|---|---|---|
-| `Forecast {forecaster: 0x7E5F…5Bdf, outcome: 42400, probabilityBps: 6200, time: 1763719200, nonce: 1763719200000}` | `0x9d68b0769b49c457471adea46b361ce9f832bb2e5bbf8199689d357766c9e754` | `0x4d8ddebb9cfe6cfcc6d870809f19364c56e134039c1200cf74004ce6aac7a1ed09c333b798001f1c2cd2d8aa37630592e3d5333abc30b6a479c0db8bd213cd651c` |
-| `ForecastBatch {forecaster: 0x7E5F…5Bdf, forecasts: [{42400, 6200}, {42501, 3100}], time: 1763719200, nonce: 1763719200001}` | `0x8628ebe750cec7b7704023cfeb8cbfde075fde486849a3ae9c8931fabc83c139` | `0xf905beb040b0c94625daeb3318c3be48580ec010fec6400f70493dcd3e74c6165dd78927190c61761f03214a1b8a2d065b393ae106adf26edd0b359a2ba1bcd71b` |
 
 The signature is the 65-byte `r ‖ s ‖ v` hex string that `eth_signTypedData_v4` returns. `v` may be 27/28 or 0/1
 and is written 27/28 in the record. `s` must be in the lower half of the curve order (`s ≤ n/2`, as Ethereum has
@@ -240,6 +230,7 @@ them without CORS. Every refusal is:
 | Status | `code` | When |
 |---|---|---|
 | 400 | `invalid_request` | the body isn't JSON, or doesn't match the shapes below (a key the signer didn't sign included) |
+| 400 | `version_2_required` | the message names no market: message version 1, retired; sign message version 2 |
 | 400 | `batch_size` | fewer than 1 or more than 50 entries |
 | 400 | `duplicate_outcome` | an outcome appears twice in one batch |
 | 400 | `stale_time` | `time` is outside the window above |
@@ -289,21 +280,20 @@ other.
   "message": {
     "forecaster": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
     "forecasts": [
-      { "outcome": 42400, "probabilityBps": 6200 },
-      { "outcome": 42501, "probabilityBps": 3100 }
+      { "outcome": 42400, "market": "BTC above 55,765 on Nov 22 at 06:00 UTC", "side": "Yes", "probabilityBps": 6200 },
+      { "outcome": 42501, "market": "ETH above 3,000 on Nov 22 at 06:00 UTC", "side": "Yes", "probabilityBps": 3100 }
     ],
     "time": 1763719200,
     "nonce": "1763719200001"
   },
-  "signature": "0xf905…cd71b",
+  "signature": "0xc118…ee11b",
   "draft": "optional: the draft id when signing from a sign link"
 }
 ```
 
-A message version 2 entry adds `"market"` and `"side"` after `"outcome"`. For one forecast, `type` is `"Forecast"`
-and `message` is `{ "forecaster", "outcome", "market", "side", "probabilityBps", "time", "nonce" }` (message
-version 1: without `market` and `side`). Answer `201` (`200` for a message recorded before, with the same body as
-then):
+For one forecast, `type` is `"Forecast"` and `message` is
+`{ "forecaster", "outcome", "market", "side", "probabilityBps", "time", "nonce" }`. Answer `201` (`200` for a
+message recorded before, with the same body as then):
 
 ```json
 {
@@ -373,7 +363,7 @@ link, which the agent then compares with its user's wallet. Answer `201`:
 `settlesAt`; a game starts (a decision is made) at `starts`, its cutoff, and settles by `settlesBy`. `title` and
 `sides` are the deployer's text on one line, as data.
 
-`typedData`, when present, is message version 2's `{ "domain", "types", "primaryType", "message" }`, each entry
+`typedData`, when present, is `{ "domain", "types", "primaryType", "message" }`, each entry
 named as the draft's `forecasts` show it, with `nonce` as a decimal string; send its `message` back unchanged as
 the submission's `message`.
 
@@ -487,17 +477,15 @@ have a record. The same files are published as `<day>.jsonl`, `<day>.json` and
   a decimal string without leading zeros. The server writes them that way whatever form they were sent in:
 
   ```json
-  {"id":101,"forecaster":"0x7e5f4552091a69125d5dfcb7b8c2659029395bdf","outcome":42400,"probabilityBps":6200,"acceptedAt":"2025-11-21T10:00:01.234Z","cutoff":"2025-11-22T06:00:00.000Z","fairBps":5810,"fairNote":null,"midBps":6050,"bookTime":"2025-11-21T10:00:00.950Z","batch":17,"index":0,"size":2,"type":"ForecastBatch","time":1763719200,"nonce":"1763719200001","signature":"0xf905…cd71b"}
+  {"id":101,"forecaster":"0x7e5f4552091a69125d5dfcb7b8c2659029395bdf","outcome":42400,"probabilityBps":6200,"acceptedAt":"2025-11-21T10:00:01.234Z","cutoff":"2025-11-22T06:00:00.000Z","fairBps":5810,"fairNote":null,"midBps":6050,"bookTime":"2025-11-21T10:00:00.950Z","batch":17,"index":0,"size":2,"type":"ForecastBatch","time":1763719200,"nonce":"1763719200001","signature":"0xc118…ee11b","version":2,"market":"BTC above 55,765 on Nov 22 at 06:00 UTC","side":"Yes"}
   ```
 
-- A line signed under message version 2 adds `"version":2,"market":"…","side":"…"` after `signature`: the names
-  it signed. A message version 1 line has neither.
+- `version`, `market` and `side` close every line: the message version and the names it signed.
 - `batch` is the batch id, `index` the entry's position in the signed `forecasts` array (0 for a `Forecast`),
   `size` the number of entries signed. Every entry of a batch is in the same record, so the signature of any line
   can be checked: take the lines with its `batch`, order them by `index`, rebuild the message from `forecaster`,
-  `(outcome, probabilityBps)` per entry (`(outcome, market, side, probabilityBps)` on message version 2 lines),
-  `time` and `nonce`, and recover with `type`'s types under that message version's domain (message version 2: the
-  mainnet salt for usehyperodds.com's records).
+  `(outcome, market, side, probabilityBps)` per entry, `time` and `nonce`, and recover with `type`'s types under
+  the domain salted for the record's network (mainnet for usehyperodds.com's records).
 - **`sha256`** is the SHA-256 of the file's bytes.
 - **`root`** is the RFC 6962 Merkle tree hash over the lines (each line's bytes without its `\n`), so one
   forecast's inclusion can be shown with a path. With SHA-256 as H: the root of no lines is `H("")`; of one line
