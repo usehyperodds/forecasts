@@ -50,12 +50,21 @@ async function edited(change, { stale = false, day = "2026-10-22" } = {}) {
 const editLine = (i, fn) => (text) =>
   text.replace(/[^\n]+/g, (line, offset) => (text.slice(0, offset).split("\n").length - 1 === i ? fn(line) : line));
 const editField = (i, fn) => editLine(i, (line) => formatLine(fn(JSON.parse(line))));
+/** The message a `Forecast` line signed. */
+const messageOf = (l) => ({
+  forecaster: l.forecaster,
+  outcome: l.outcome,
+  market: l.market,
+  side: l.side,
+  probabilityBps: l.probabilityBps,
+  time: l.time,
+  nonce: l.nonce,
+});
 /** Line 4 of 2026-10-22 is key 2's one-forecast batch: its time moves and it is signed again. */
 const editTimes = (fn) =>
   editField(3, (line) => {
     const l = fn(line);
-    const message = { forecaster: l.forecaster, outcome: l.outcome, probabilityBps: l.probabilityBps, time: l.time, nonce: l.nonce };
-    return { ...l, signature: sign(digest("Forecast", message), key(2)) };
+    return { ...l, signature: sign(digest("Forecast", messageOf(l)), key(2)) };
   });
 
 test("the valid record verifies", async () => {
@@ -157,8 +166,7 @@ test("a high-s signature fails, though it recovers to the same forecaster", asyn
   const line = JSON.parse((await load("valid")).days.get("2026-10-22").jsonl.toString().split("\n")[3]);
   const s = BigInt(`0x${line.signature.slice(66, 130)}`);
   const flipped = `${line.signature.slice(0, 66)}${(N - s).toString(16).padStart(64, "0")}${line.signature.endsWith("1b") ? "1c" : "1b"}`;
-  const message = { forecaster: line.forecaster, outcome: line.outcome, probabilityBps: line.probabilityBps, time: line.time, nonce: line.nonce };
-  assert.equal(recover(digest("Forecast", message), flipped), line.forecaster);
+  assert.equal(recover(digest("Forecast", messageOf(line)), flipped), line.forecaster);
   const e = failure(await edited(editField(3, (l) => ({ ...l, signature: flipped }))));
   assert.equal(e.message, "2026-10-22, line 4: signature has a high s; the record holds low-s signatures only");
 });
@@ -188,7 +196,7 @@ test("an equal signed time on the same outcome fails too", async () => {
   const e = failure(
     await edited(
       editField(4, (l) => {
-        const message = { forecaster: l.forecaster, outcome: l.outcome, probabilityBps: l.probabilityBps, time: first.time, nonce: l.nonce };
+        const message = messageOf({ ...l, time: first.time });
         return { ...l, time: first.time, acceptedAt: new Date((first.time + 300) * 1000).toISOString(), signature: sign(digest("Forecast", message), key(1)) };
       }),
     ),
@@ -282,23 +290,21 @@ test("the CLI names the first failure and exits 1", async () => {
   });
 });
 
-test("a line signed under version 2 carries its names, and its signature checks with them", async () => {
-  // Line 4 of 2026-10-22, key 2's one-forecast batch, signed again under version 2.
-  const names = { version: 2, market: "BTC above 82,574 at Oct 16 08:00 UTC", side: "Yes" };
-  const v2 = (l, signedMarket = names.market) => {
-    const message = { forecaster: l.forecaster, outcome: l.outcome, market: signedMarket, side: names.side, probabilityBps: l.probabilityBps, time: l.time, nonce: l.nonce };
-    return { ...l, ...names, signature: sign(digest("Forecast", message, 2), key(2)) };
-  };
-  assert.equal(verifyRecords(await edited(editField(3, (l) => v2(l)))).length, 2);
-  const line = formatLine(v2(JSON.parse((await load("valid")).days.get("2026-10-22").jsonl.toString("utf8").split("\n")[3])));
-  assert.match(line, /"signature":"0x[0-9a-f]{130}","version":2,"market":"BTC above 82,574 at Oct 16 08:00 UTC","side":"Yes"\}$/);
-  // Names other than the signed ones don't recover to the forecaster.
-  const renamed = failure(await edited(editField(3, (l) => v2(l, "BTC above 1 at Oct 16 08:00 UTC"))));
-  assert.match(renamed.detail, /^batch \d+'s signature recovers to 0x[0-9a-f]{40}, not to its forecaster/);
-  // A version that isn't 2, or names without a version, aren't the record's format.
-  assert.match(failure(await edited(editField(3, (l) => ({ ...v2(l), version: 1 })))).detail, /^version 1 is not 2/);
-  assert.match(
-    failure(await edited(editLine(3, (s) => s.replace(/\}$/, ',"market":"x","side":"y"}')))).detail,
-    /^has unexpected "market", "side"/,
-  );
+test("every line carries the names it signed, and its signature checks with them", async () => {
+  for (const { jsonl } of (await load("valid")).days.values())
+    for (const line of jsonl.toString("utf8").trimEnd().split("\n"))
+      assert.match(line, /"signature":"0x[0-9a-f]{130}","version":2,"market":"[^"]+","side":"Yes"\}$/);
+  // Line 4 of 2026-10-22, key 2's one-forecast batch, signed again for another market title.
+  const market = "BTC above 82,574 at Oct 16 08:00 UTC";
+  const resigned = editField(3, (l) => ({ ...l, market, signature: sign(digest("Forecast", messageOf({ ...l, market })), key(2)) }));
+  assert.equal(verifyRecords(await edited(resigned)).length, 2);
+  // A market renamed after signing doesn't recover to the forecaster.
+  const renamed = failure(await edited(editField(3, (l) => ({ ...l, market: "BTC above 1 at Oct 16 08:00 UTC" }))));
+  assert.match(renamed.detail, /^batch 3's signature recovers to 0x[0-9a-f]{40}, not to its forecaster/);
+  for (const version of [1, "2"])
+    assert.equal(failure(await edited(editField(3, (l) => ({ ...l, version })))).detail, `version ${JSON.stringify(version)} is not 2`);
+  for (const k of ["version", "market", "side"]) {
+    const e = failure(await edited(editLine(3, (s) => formatLine({ ...JSON.parse(s), [k]: undefined }))));
+    assert.equal(e.detail, `has no "${k}"`);
+  }
 });

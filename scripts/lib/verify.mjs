@@ -6,7 +6,7 @@ import {
   formatLine,
   isDay,
   isIso,
-  keysOf,
+  KEYS,
   lineProblem,
   MANIFEST_KEYS,
   merkleRoot,
@@ -20,7 +20,7 @@ const CLOSE_AFTER_MS = DAY_MS + 5 * 60_000;
 /** The server takes a signed time from this far behind its clock to this far ahead of it. */
 const TIME_BEHIND_S = 600;
 const TIME_AHEAD_S = 120;
-const BATCH_FIELDS = ["forecaster", "type", "size", "time", "nonce", "signature", "version"];
+const BATCH_FIELDS = ["forecaster", "type", "size", "time", "nonce", "signature"];
 
 export class RecordError extends Error {
   /** `lines` is one line number, a list of them, or null for the file as a whole. */
@@ -149,14 +149,13 @@ function checkLine(day, text, n, prev) {
   }
   if (v === null || typeof v !== "object" || Array.isArray(v)) throw new RecordError(day, "is not a JSON object", n);
   const keys = Object.keys(v);
-  const want = keysOf(v);
-  const missing = want.filter((k) => !Object.hasOwn(v, k));
+  const missing = KEYS.filter((k) => !Object.hasOwn(v, k));
   if (missing.length > 0) throw new RecordError(day, `has no ${missing.map((k) => q(k)).join(", ")}`, n);
-  const extra = keys.filter((k) => !want.includes(k));
+  const extra = keys.filter((k) => !KEYS.includes(k));
   if (extra.length > 0) throw new RecordError(day, `has unexpected ${extra.map((k) => q(k)).join(", ")}`, n);
-  const at = keys.findIndex((k, i) => k !== want[i]);
+  const at = keys.findIndex((k, i) => k !== KEYS[i]);
   if (at >= 0)
-    throw new RecordError(day, `key ${at + 1} is ${q(keys[at])}; the spec puts ${q(want[at])} there`, n);
+    throw new RecordError(day, `key ${at + 1} is ${q(keys[at])}; the spec puts ${q(KEYS[at])} there`, n);
   const problem = lineProblem(v);
   if (problem) throw new RecordError(day, problem, n);
   const canonical = formatLine(v);
@@ -174,15 +173,14 @@ function checkLine(day, text, n, prev) {
   return { n, v };
 }
 
-/** The signed message, rebuilt from a batch's lines in index order: with each market's names on version 2. */
+/** The signed message, rebuilt from a batch's lines in index order. */
 function messageOf(group) {
   const [{ v }] = group;
-  const names = (e) => (e.version === 2 ? { market: e.market, side: e.side } : {});
-  if (v.type === "Forecast")
-    return { forecaster: v.forecaster, outcome: v.outcome, ...names(v), probabilityBps: v.probabilityBps, time: v.time, nonce: v.nonce };
+  const entry = (e) => ({ outcome: e.outcome, market: e.market, side: e.side, probabilityBps: e.probabilityBps });
+  if (v.type === "Forecast") return { forecaster: v.forecaster, ...entry(v), time: v.time, nonce: v.nonce };
   return {
     forecaster: v.forecaster,
-    forecasts: group.map(({ v: e }) => ({ outcome: e.outcome, ...names(e), probabilityBps: e.probabilityBps })),
+    forecasts: group.map(({ v: e }) => entry(e)),
     time: v.time,
     nonce: v.nonce,
   };
@@ -266,7 +264,7 @@ function checkBatches(day, lines, seen) {
     seen.nonces.set(nonceKey, batch);
     let signer;
     try {
-      signer = recover(digest(first.v.type, messageOf(byIndex), first.v.version ?? 1), first.v.signature);
+      signer = recover(digest(first.v.type, messageOf(byIndex)), first.v.signature);
     } catch (error) {
       throw new RecordError(day, `batch ${batch}'s signature does not recover (${error.message})`, at);
     }

@@ -38,7 +38,8 @@ Each line of a record is one forecast:
 | `fairBps`, `fairNote` | Hyperodds' fair line for side 0 at acceptance. When it is null, `fairNote` says why: `no-line` (no current line) or `low-confidence` (under 0.5 confidence, or a single source). |
 | `midBps`, `bookTime` | The book's mid for side 0 at acceptance, and when that book last changed. Null when either side of the book was empty or its spread was wider than 10 points. |
 | `batch`, `index`, `size`, `type` | The signed message the forecast came in, its position in it and how many forecasts it held. |
-| `time`, `nonce`, `signature` | The rest of the signed message, and its signature. |
+| `time`, `nonce`, `signature` | When the forecaster signed, in Unix seconds, the nonce it chose, and the signature. |
+| `version`, `market`, `side` | The message version, always 2, and the market title and side 0 label the forecaster signed. |
 
 ## Verify the record
 
@@ -68,19 +69,15 @@ At the first failure it prints where and why, then exits with status 1. The time
 recorded; [Limits](#limits) covers what that means.
 
 The Merkle root follows RFC 6962 with SHA-256, over each line's bytes without its newline, so one forecast's
-inclusion can be proven with a path. Signatures are EIP-712 with no chain id, in one of two versions. Version 2
-names each market and the side its probability is for, under the domain
-`{ name: "Hyperodds Forecasts", version: "2", salt: keccak256("hyperodds:mainnet") }`; its lines end in
-`"version":2,"market":…,"side":…`, the names that were signed:
+inclusion can be proven with a path. Signatures are EIP-712 with no chain id, under the domain
+`{ name: "Hyperodds Forecasts", version: "2", salt: keccak256("hyperodds:mainnet") }`. Each forecast names its
+market and the side its probability is for, so a wallet shows what it signs:
 
 ```
 Forecast(address forecaster,uint32 outcome,string market,string side,uint16 probabilityBps,uint64 time,uint64 nonce)
 ForecastBatch(address forecaster,ForecastEntry[] forecasts,uint64 time,uint64 nonce)
 ForecastEntry(uint32 outcome,string market,string side,uint16 probabilityBps)
 ```
-
-Version 1 is legacy, still accepted from existing clients until it is retired: the domain
-`{ name: "Hyperodds Forecasts", version: "1" }` and the same messages without `market` and `side`.
 
 To rebuild the board and ask Hyperliquid again about every settlement:
 
@@ -201,9 +198,9 @@ past it, the rank itself allows for luck, through the standard error in `skillFa
   counts on every row are for.
 - **There are no prizes or rewards.** Nothing is paid for a place on the board, and a score implies nothing about
   trading results.
-- **Hyperodds records the reference prices.** The forecaster's signature covers the outcome, the probability, the
-  time and the nonce. The fair line, the mid, `acceptedAt` and the cutoff are what Hyperodds recorded at
-  acceptance. The daily hash fixes them once the day closes; no one outside Hyperodds attests to them.
+- **Hyperodds records the reference prices.** The forecaster's signature covers the outcome, its market and side,
+  the probability, the time and the nonce. The fair line, the mid, `acceptedAt` and the cutoff are what Hyperodds
+  recorded at acceptance. The daily hash fixes them once the day closes; no one outside Hyperodds attests to them.
 - **Timing rests on Hyperodds' clock.** `verify` checks `acceptedAt`, the server's own reading of its clock,
   against the close and the signed time. That is not a proof of timing. A price market settles at its cutoff, but
   its day's record closes only at 00:05 UTC the next day. In between, Hyperodds could add a forecast to that day

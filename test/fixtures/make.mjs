@@ -13,6 +13,10 @@ const here = fileURLToPath(new URL(".", import.meta.url));
 const iso = (ms) => new Date(ms).toISOString();
 const at = (s) => Date.parse(s);
 
+const ASSETS = ["BTC", "ETH", "SOL", "HYPE"];
+/** The names a forecast on `outcome` signs: its market's title and side 0's label. */
+const namesOf = (outcome) => ({ market: `${ASSETS[outcome % ASSETS.length]} above ${(outcome % 997) * 100} at the cutoff`, side: "Yes" });
+
 /**
  * Lines for a list of submissions, ids and batch ids given in order. Each submission:
  * { key, cutoff, acceptedAt, entries: [{ outcome, p, fair?, fairNote?, mid?, bookTime? }], single? }
@@ -24,10 +28,11 @@ function linesOf(submissions) {
     const time = Math.floor(at(s.acceptedAt) / 1000) - 1;
     const nonce = String(1763719200000 + b);
     const type = s.entries.length === 1 && s.single !== false ? "Forecast" : "ForecastBatch";
+    const entry = (e) => ({ outcome: e.outcome, ...namesOf(e.outcome), probabilityBps: e.p });
     const message =
       type === "Forecast"
-        ? { forecaster, outcome: s.entries[0].outcome, probabilityBps: s.entries[0].p, time, nonce }
-        : { forecaster, forecasts: s.entries.map((e) => ({ outcome: e.outcome, probabilityBps: e.p })), time, nonce };
+        ? { forecaster, ...entry(s.entries[0]), time, nonce }
+        : { forecaster, forecasts: s.entries.map(entry), time, nonce };
     const signature = sign(digest(type, message), s.key);
     return s.entries.map((e, index) => {
       const fair = e.fair ?? null;
@@ -50,6 +55,8 @@ function linesOf(submissions) {
         time,
         nonce,
         signature,
+        version: 2,
+        ...namesOf(e.outcome),
       };
     });
   });
@@ -149,7 +156,7 @@ await variant("tampered-line", (t) => edit(t, 1, (l) => ({ ...l, probabilityBps:
 await variant("missing-entry", (t) => t.filter((_, i) => i !== 2));
 await variant("bad-signature", (t) =>
   edit(t, 3, (l) => {
-    const message = { forecaster: l.forecaster, outcome: l.outcome, probabilityBps: l.probabilityBps, time: l.time, nonce: l.nonce };
+    const message = { forecaster: l.forecaster, outcome: l.outcome, market: l.market, side: l.side, probabilityBps: l.probabilityBps, time: l.time, nonce: l.nonce };
     return { ...l, signature: sign(digest("Forecast", message), key(9)) };
   }),
 );
@@ -158,7 +165,7 @@ await variant("bad-signature", (t) =>
 await variant("out-of-order", (t) =>
   edit(t, 4, (l) => {
     const time = JSON.parse(t[0]).time - 1;
-    const message = { forecaster: l.forecaster, outcome: l.outcome, probabilityBps: l.probabilityBps, time, nonce: l.nonce };
+    const message = { forecaster: l.forecaster, outcome: l.outcome, market: l.market, side: l.side, probabilityBps: l.probabilityBps, time, nonce: l.nonce };
     return { ...l, time, acceptedAt: iso((time + 300) * 1000), signature: sign(digest("Forecast", message), key(1)) };
   }),
 );
